@@ -1,19 +1,24 @@
 """Pricing engine: the only code in the app that produces prices and totals.
 
-price_quote() is a pure function. It reads unit prices from the catalog and
-nothing else: no model, no network, no clock (the date is passed in), no
-randomness. The same inputs always give the same quote.
+The rules are written out in docs/PRICING_SPEC.md; this module implements
+them. price_quote() is a pure function. It reads unit prices and tax rates
+from the catalog and nothing else: no model, no network, no clock (the date
+is passed in), no randomness. The same inputs always give the same quote.
 
-    line_total      = unit_price x quantity              (exact)
-    subtotal        = sum of line totals                 (exact)
-    discount_amount = subtotal x discount% / 100, rounded half-up to the cent
-    total           = subtotal - discount_amount
+Per line:
+    amount      = unit_price x quantity                         (exact)
+    tax         = amount x tax_rate / 100, rounded half-up to the cent
+    line_total  = amount + tax
+
+Per quote:
+    total_before_tax = sum of amounts
+    total_tax        = sum of line taxes
+    subtotal         = sum of line totals  (includes tax, as in Zoho CRM)
+    discount         = a dollar amount entered by a person, taken off after tax
+    grand_total      = subtotal - discount
 
 If any line has no current catalog price, NoCurrentPrice is raised and no
 quote is produced at all: no skipped lines, no estimates, no substitutes.
-
-The discount percentage is entered by a person, never taken from a model.
-Totals are pre-tax.
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ from fieldnote.catalog import Catalog
 
 CENT = Decimal("0.01")
 HUNDRED = Decimal("100")
+ZERO = Decimal("0.00")
 
 
 @dataclass(frozen=True)
@@ -52,7 +58,10 @@ class PricedLine:
     name: str
     quantity: int
     unit_price: Decimal
+    tax_rate: Decimal
     price_effective_date: date  # which catalog entry was used, for traceability
+    amount: Decimal
+    tax: Decimal
     line_total: Decimal
 
 
@@ -60,74 +69,89 @@ class PricedLine:
 class PricedQuote:
     priced_on: date
     lines: tuple[PricedLine, ...]
+    total_before_tax: Decimal
+    total_tax: Decimal
     subtotal: Decimal
-    discount_percent: Decimal
-    discount_amount: Decimal
-    total: Decimal
+    discount: Decimal
+    grand_total: Decimal
 
     @property
     def has_discount(self) -> bool:
-        """True for any discount above 0%. The quote step uses this to choose
+        """True for any discount above $0. The quote step uses this to choose
         quote.release_discounted (red) instead of quote.release."""
-        return self.discount_percent > 0
+        return self.discount > 0
 
 
-def _check_discount(discount_percent: Decimal) -> Decimal:
-    # Floats are refused outright: 5.1 as a float is 5.0999999999999996447...
-    if not isinstance(discount_percent, Decimal):
-        raise TypeError("discount_percent must be a Decimal, e.g. Decimal('5')")
-    if not discount_percent.is_finite():
-        raise ValueError("discount_percent must be a number")
-    if not Decimal("0") <= discount_percent < HUNDRED:
-        raise ValueError(f"discount_percent must be from 0 up to (not including) 100, got {discount_percent}")
-    if discount_percent != discount_percent.quantize(CENT):
-        raise ValueError(f"discount_percent can have at most 2 decimals, got {discount_percent}")
-    return discount_percent.quantize(CENT)
+def _check_discount_format(discount: Decimal) -> Decimal:
+    # Floats are refused outright: 0.1 as a float is 0.1000000000000000055...
+    if not isinstance(discount, Decimal):
+        raise TypeError("discount must be a Decimal, e.g. Decimal('500')")
+    if not discount.is_finite():
+        raise ValueError("discount must be a number")
+    if discount < 0:
+        raise ValueError(f"discount cannot be negative, got {discount}")
+    if discount != discount.quantize(CENT):
+        raise ValueError(f"discount can have at most 2 decimals, got {discount}")
+    return discount.quantize(CENT)
+
+
+def _line_tax(amount: Decimal, tax_rate: Decimal) -> Decimal:
+    # The only rounding step in the engine, done once per line. ROUND_HALF_UP
+    # is the everyday rule ($0.065 -> $0.07); Python's default would round
+    # half to even ($0.065 -> $0.06).
+    return (amount * tax_rate / HUNDRED).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 def price_quote(
     catalog: Catalog,
     lines: Sequence[QuoteLine],
     on_date: date,
-    discount_percent: Decimal = Decimal("0"),
+    discount: Decimal = Decimal("0"),
 ) -> PricedQuote:
     """Price every line from the catalog as of on_date and total the quote.
 
     Raises NoCurrentPrice (from the catalog) if any product has no current
-    price; nothing is returned in that case.
+    price, and ValueError if the discount is larger than the subtotal.
+    Nothing is returned in either case.
     """
     if not lines:
         raise ValueError("a quote needs at least one line")
     for line in lines:
         if not isinstance(line, QuoteLine):
             raise TypeError(f"each line must be a QuoteLine, got {line!r}")
-    discount_percent = _check_discount(discount_percent)
+    discount = _check_discount_format(discount)
 
     priced_lines = []
     for line in lines:
         entry = catalog.current_price(line.product_id, on_date)  # hard stop if none
+        amount = entry.unit_price * line.quantity
+        tax = _line_tax(amount, entry.tax_rate)
         priced_lines.append(
             PricedLine(
                 product_id=entry.product_id,
                 name=entry.name,
                 quantity=line.quantity,
                 unit_price=entry.unit_price,
+                tax_rate=entry.tax_rate,
                 price_effective_date=entry.effective_date,
-                line_total=entry.unit_price * line.quantity,
+                amount=amount,
+                tax=tax,
+                line_total=amount + tax,
             )
         )
 
-    subtotal = sum((p.line_total for p in priced_lines), Decimal("0.00"))
-    # The only rounding step. ROUND_HALF_UP is the everyday rule (1.145 -> 1.15);
-    # Python's default would round half to even (1.145 -> 1.14).
-    discount_amount = (subtotal * discount_percent / HUNDRED).quantize(CENT, rounding=ROUND_HALF_UP)
-    total = subtotal - discount_amount
+    total_before_tax = sum((p.amount for p in priced_lines), ZERO)
+    total_tax = sum((p.tax for p in priced_lines), ZERO)
+    subtotal = sum((p.line_total for p in priced_lines), ZERO)
+    if discount > subtotal:
+        raise ValueError(f"discount {discount} is larger than the subtotal {subtotal}")
 
     return PricedQuote(
         priced_on=on_date,
         lines=tuple(priced_lines),
+        total_before_tax=total_before_tax,
+        total_tax=total_tax,
         subtotal=subtotal,
-        discount_percent=discount_percent,
-        discount_amount=discount_amount,
-        total=total,
+        discount=discount,
+        grand_total=subtotal - discount,
     )

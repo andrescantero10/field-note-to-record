@@ -27,9 +27,9 @@ The developer must be able to explain every line. Work in small steps.
   produces figures, as pure deterministic code from the product catalog.
 - No current catalog price for an item = hard stop. No substitute, no estimate.
 - The validation module is independent of the pricing engine: no shared helpers,
-  written from the spec only, in a **fresh session**. That session must not read
-  `src/fieldnote/pricing.py` or `src/fieldnote/catalog.py`, and reads
-  `data/catalog.csv` itself.
+  written from the spec only (`docs/PRICING_SPEC.md`), in a **fresh session**.
+  That session must not read `src/fieldnote/pricing.py` or
+  `src/fieldnote/catalog.py`, and reads `data/catalog.csv` itself.
 - Every action has a type. The static policy table maps it to green (run and log),
   yellow (owner of the record confirms) or red (a different named person approves).
   The classification is never taken from model output. A type missing from the table is refused.
@@ -50,7 +50,9 @@ The developer must be able to explain every line. Work in small steps.
 - Public repo: synthetic data only (invented customers and products). No real company
   data, credentials or keys. Secrets come from environment variables; see `.env.example`.
 - Zoho adapter: mock mode is the default; live mode targets a free Zoho CRM Developer
-  Edition org via REST (OAuth refresh token, upsert endpoints).
+  Edition org via REST (OAuth refresh token, upsert endpoints). Never write to the
+  distributor's production org: creating quotes or deals there triggers automations
+  (including a copy to the accounting system). Its details stay out of this repo.
 - Stack: Python 3.11+, FastAPI, SQLite, pytest, Hypothesis, a simple mobile-first page.
   Keep dependencies few; add one only in the task that first needs it.
 - Money is `Decimal`, never float.
@@ -66,7 +68,8 @@ The developer must be able to explain every line. Work in small steps.
 | `src/fieldnote/policy_table.py` | The developer's policy table |
 | `src/fieldnote/catalog.py` | Catalog loader, `current_price()`, hard stops |
 | `src/fieldnote/pricing.py` | Pricing engine (only producer of figures) |
-| `data/catalog.csv` | Synthetic catalog: one row per dated price entry |
+| `docs/PRICING_SPEC.md` | Pricing rules: line tax, totals, dollar discount, hard stops |
+| `data/catalog.csv` | Synthetic catalog: one row per dated price entry, with tax rate |
 | `docs/` | AI assistance log, scope changes |
 
 ## Commands

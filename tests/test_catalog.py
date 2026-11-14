@@ -9,8 +9,8 @@ import pytest
 from fieldnote.catalog import Catalog, CatalogError, NoCurrentPrice
 
 SAMPLE = Path(__file__).resolve().parent.parent / "data" / "catalog.csv"
-HEADER = "id,name,unit_price,active,effective_date\n"
-GOOD_ROW = "X-1,Test item,100.00,true,2026-01-01\n"
+HEADER = "id,name,unit_price,tax_rate,active,effective_date\n"
+GOOD_ROW = "X-1,Test item,100.00,6.50,true,2026-01-01\n"
 
 
 @pytest.fixture(scope="module")
@@ -27,11 +27,17 @@ def write_csv(tmp_path, text):
 # --- The sample catalog -------------------------------------------------------
 
 
-def test_sample_catalog_loads_with_decimal_prices(catalog):
+def test_sample_catalog_loads_with_decimal_prices_and_tax_rates(catalog):
     entry = catalog.current_price("GRIP-VAC-4", date(2026, 11, 14))
     assert entry.unit_price == Decimal("1875.50")
+    assert entry.tax_rate == Decimal("6.50")
     assert isinstance(entry.unit_price, Decimal)
+    assert isinstance(entry.tax_rate, Decimal)
     assert entry.name == "Vacuum gripper with 4 suction cups"
+
+
+def test_untaxed_item_has_zero_tax_rate(catalog):
+    assert catalog.current_price("SVC-SHIP", date(2026, 11, 14)).tax_rate == Decimal("0.00")
 
 
 @pytest.mark.parametrize(
@@ -88,10 +94,11 @@ def test_datetime_instead_of_date_is_refused(catalog):
 # --- Accepted formats ---------------------------------------------------------
 
 
-def test_whole_number_price_and_excel_booleans_are_accepted(tmp_path):
-    path = write_csv(tmp_path, HEADER + "X-1,Test item,1200,TRUE,2026-01-01\n")
+def test_whole_numbers_and_excel_booleans_are_accepted(tmp_path):
+    path = write_csv(tmp_path, HEADER + "X-1,Test item,1200,7,TRUE,2026-01-01\n")
     entry = Catalog.from_csv(path).current_price("X-1", date(2026, 2, 1))
     assert entry.unit_price == Decimal("1200.00")
+    assert entry.tax_rate == Decimal("7.00")
     assert entry.active is True
 
 
@@ -101,22 +108,33 @@ def test_whole_number_price_and_excel_booleans_are_accepted(tmp_path):
 @pytest.mark.parametrize(
     "bad_row",
     [
-        "X-2,Test item,-5.00,true,2026-01-01",       # negative
-        "X-2,Test item,0.00,true,2026-01-01",        # zero
-        "X-2,Test item,12.345,true,2026-01-01",      # more than 2 decimals
-        'X-2,Test item,"1,200.00",true,2026-01-01',  # thousands separator
-        "X-2,Test item,$100,true,2026-01-01",        # currency symbol
-        "X-2,Test item,1e3,true,2026-01-01",         # scientific notation
-        "X-2,Test item,NaN,true,2026-01-01",
-        "X-2,Test item,,true,2026-01-01",            # missing price
-        "X-2,Test item,100.00,yes,2026-01-01",       # not true/false
-        "X-2,Test item,100.00,,2026-01-01",
-        "X-2,Test item,100.00,true,11/14/2026",      # US-style date
-        "X-2,Test item,100.00,true,20261114",        # compact date
-        "X-2,Test item,100.00,true,2026-13-01",      # month 13
-        ",Test item,100.00,true,2026-01-01",         # blank id
-        "X-2,,100.00,true,2026-01-01",               # blank name
-        "X-2,Gripper, 2 finger,100.00,true,2026-01-01",  # unquoted comma
+        # unit_price
+        "X-2,Test item,-5.00,6.50,true,2026-01-01",       # negative
+        "X-2,Test item,0.00,6.50,true,2026-01-01",        # zero
+        "X-2,Test item,12.345,6.50,true,2026-01-01",      # more than 2 decimals
+        'X-2,Test item,"1,200.00",6.50,true,2026-01-01',  # thousands separator
+        "X-2,Test item,$100,6.50,true,2026-01-01",        # currency symbol
+        "X-2,Test item,1e3,6.50,true,2026-01-01",         # scientific notation
+        "X-2,Test item,NaN,6.50,true,2026-01-01",
+        "X-2,Test item,,6.50,true,2026-01-01",            # missing price
+        # tax_rate
+        "X-2,Test item,100.00,7%,true,2026-01-01",        # percent sign
+        "X-2,Test item,100.00,-1,true,2026-01-01",        # negative
+        "X-2,Test item,100.00,100,true,2026-01-01",       # 100% or more
+        "X-2,Test item,100.00,6.555,true,2026-01-01",     # more than 2 decimals
+        "X-2,Test item,100.00,,true,2026-01-01",          # missing
+        "X-2,Test item,100.00,0.065,true,2026-01-01",     # a fraction, not a percent
+        # active
+        "X-2,Test item,100.00,6.50,yes,2026-01-01",
+        "X-2,Test item,100.00,6.50,,2026-01-01",
+        # effective_date
+        "X-2,Test item,100.00,6.50,true,11/14/2026",      # US-style date
+        "X-2,Test item,100.00,6.50,true,20261114",        # compact date
+        "X-2,Test item,100.00,6.50,true,2026-13-01",      # month 13
+        # id, name, shape
+        ",Test item,100.00,6.50,true,2026-01-01",         # blank id
+        "X-2,,100.00,6.50,true,2026-01-01",               # blank name
+        "X-2,Gripper, 2 finger,100.00,6.50,true,2026-01-01",  # unquoted comma
     ],
 )
 def test_bad_row_is_rejected_with_its_line_number(tmp_path, bad_row):
@@ -126,7 +144,7 @@ def test_bad_row_is_rejected_with_its_line_number(tmp_path, bad_row):
 
 
 def test_duplicate_effective_date_for_a_product_is_rejected(tmp_path):
-    path = write_csv(tmp_path, HEADER + GOOD_ROW + "X-1,Test item,120.00,true,2026-01-01\n")
+    path = write_csv(tmp_path, HEADER + GOOD_ROW + "X-1,Test item,120.00,6.50,true,2026-01-01\n")
     with pytest.raises(CatalogError, match="same effective_date"):
         Catalog.from_csv(path)
 
@@ -134,9 +152,9 @@ def test_duplicate_effective_date_for_a_product_is_rejected(tmp_path):
 @pytest.mark.parametrize(
     "header",
     [
-        "id,name,unit_price,active\n",                         # missing column
-        "id,name,unit_price,active,effective_date,notes\n",    # extra column
-        "sku,name,unit_price,active,effective_date\n",         # renamed column
+        "id,name,unit_price,active,effective_date\n",                    # old file, no tax_rate
+        "id,name,unit_price,tax_rate,active,effective_date,notes\n",     # extra column
+        "sku,name,unit_price,tax_rate,active,effective_date\n",          # renamed column
     ],
 )
 def test_wrong_columns_are_rejected(tmp_path, header):

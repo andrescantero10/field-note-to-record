@@ -1,17 +1,19 @@
-id,name,unit_price,active,effective_date
-ARM-6KG,Collaborative arm 6-axis 6 kg payload,18450.00,true,2026-01-01
-ARM-6KG,Collaborative arm 6-axis 6 kg payload,19200.00,true,2027-01-01
-ARM-12KG,Collaborative arm 6-axis 12 kg payload,25900.00,true,2026-01-01
-ARM-12KG,Collaborative arm 6-axis 12 kg payload,26900.00,true,2026-07-01
-GRIP-2F-85,Two-finger electric gripper 85 mm stroke,3150.00,true,2026-01-01
-GRIP-2F-50,Two-finger electric gripper 50 mm stroke,2480.00,true,2026-01-01
-GRIP-2F-50,Two-finger electric gripper 50 mm stroke,2480.00,false,2026-09-01
-GRIP-VAC-4,Vacuum gripper with 4 suction cups,1875.50,true,2026-03-15
-SAFE-SCAN,Safety laser scanner 270 degree field,2640.00,true,2026-01-01
-AMR-300,Autonomous mobile robot 300 kg payload,41500.00,true,2026-01-01
-VIS-2D,2D vision camera kit,2290.00,true,2026-01-01
-VIS-3D,3D vision camera kit,5480.00,true,2027-02-01
-MNT-PED,Steel robot pedestal mount,620.00,true,2026-01-01
-PEND-TEACH,Replacement teach pendant,1340.00,true,2026-01-01
-SVC-INSTALL,On-site installation per day,1450.00,true,2026-01-01
-SVC-TRAIN,Operator training per day,980.00,true,2026-01-01
+id,name,unit_price,tax_rate,active,effective_date
+ARM-6KG,Collaborative arm 6-axis 6 kg payload,18450.00,6.50,true,2026-01-01
+ARM-6KG,Collaborative arm 6-axis 6 kg payload,19200.00,6.50,true,2027-01-01
+ARM-12KG,Collaborative arm 6-axis 12 kg payload,25900.00,6.50,true,2026-01-01
+ARM-12KG,Collaborative arm 6-axis 12 kg payload,26900.00,6.50,true,2026-07-01
+GRIP-2F-85,Two-finger electric gripper 85 mm stroke,3150.00,6.50,true,2026-01-01
+GRIP-2F-50,Two-finger electric gripper 50 mm stroke,2480.00,6.50,true,2026-01-01
+GRIP-2F-50,Two-finger electric gripper 50 mm stroke,2480.00,6.50,false,2026-09-01
+GRIP-VAC-4,Vacuum gripper with 4 suction cups,1875.50,6.50,true,2026-03-15
+SAFE-SCAN,Safety laser scanner 270 degree field,2640.00,6.50,true,2026-01-01
+AMR-300,Autonomous mobile robot 300 kg payload,41500.00,6.50,true,2026-01-01
+VIS-2D,2D vision camera kit,2290.00,6.50,true,2026-01-01
+VIS-3D,3D vision camera kit,5480.00,6.50,true,2027-02-01
+MNT-PED,Steel robot pedestal mount,620.00,6.50,true,2026-01-01
+PEND-TEACH,Replacement teach pendant,1340.00,6.50,true,2026-01-01
+WAR-ARM-2Y,2-year extended warranty for collaborative arm,3600.00,6.50,true,2026-01-01
+SVC-SHIP,Shipping and deployment per robot,2450.00,0,true,2026-01-01
+SVC-INSTALL,On-site installation per day,1450.00,0,true,2026-01-01
+SVC-TRAIN,Operator training per day,980.00,0,true,2026-01-01

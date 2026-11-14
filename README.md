@@ -44,19 +44,27 @@ pytest
 All customers and products in this repo are invented.
 
 **Product catalog** (`data/catalog.csv`): one row per dated price entry, with
-columns `id, name, unit_price, active, effective_date`. The price in force on a
-date is the row with the latest `effective_date` on or before it; an inactive
-row means the product is discontinued from that date. A product with no current
-price cannot be quoted. The sample includes a past price change (`ARM-12KG`),
-a future one (`ARM-6KG`), a product not yet available (`VIS-3D`) and a
-discontinued one (`GRIP-2F-50`).
+columns `id, name, unit_price, tax_rate, active, effective_date`. `tax_rate` is a
+percentage (`0` = not taxed). The row in force on a date is the one with the
+latest `effective_date` on or before it; an inactive row means the product is
+discontinued from that date. A product with no current price cannot be quoted.
+The sample includes a past price change (`ARM-12KG`), a future one (`ARM-6KG`),
+a product not yet available (`VIS-3D`), a discontinued one (`GRIP-2F-50`), and
+untaxed services (`SVC-*`). Tax rates are invented.
+
+**Pricing rules** are written in [`docs/PRICING_SPEC.md`](docs/PRICING_SPEC.md):
+tax per line, subtotal including tax, and a person-entered dollar discount taken
+off after tax.
 
 ## Known limitations
 
 - Audit log: the hash chain detects edited or deleted entries in the middle of
   the log, but not removal of the most recent entries (the shortened chain is
   still valid). Detecting that would need the latest hash stored outside the database.
-- Quotes are pre-tax. Sales tax (rates, exemptions) is out of scope.
+- Pricing: the tax rate comes from the product's catalog row, not from the
+  delivery address. No per-line discounts, no "adjustment" amount, purchase
+  quotes only (no rental or leasing). Tax rounding is assumed to be half-up per
+  line, matching observed Zoho quotes; not yet verified against a Zoho test org.
 - Catalog: loaded from a CSV file in the repo. Syncing it from the Zoho CRM
   Products module is planned with the Zoho adapter; Zoho has no price
   effective-date field by default, so that needs a custom field.

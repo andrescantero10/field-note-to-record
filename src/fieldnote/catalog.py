@@ -3,9 +3,13 @@ question, "what is the current price of product X on date D?".
 
 Each row is a dated price entry, so a product can have several rows:
 
-    id,name,unit_price,active,effective_date
-    ARM-12KG,...,25900.00,true,2026-01-01
-    ARM-12KG,...,26900.00,true,2026-07-01   <- new price from July 1
+    id,name,unit_price,tax_rate,active,effective_date
+    ARM-12KG,...,25900.00,6.50,true,2026-01-01
+    ARM-12KG,...,26900.00,6.50,true,2026-07-01   <- new price from July 1
+    SVC-SHIP,...,2450.00,0,true,2026-01-01       <- not taxed
+
+tax_rate is a percentage (6.50 means 6.5%); 0 means the item is not taxed.
+A tax change is made the same way as a price change: a new dated row.
 
 The entry that applies on a date is the one with the latest effective_date
 on or before that date. If that entry is inactive, the product is
@@ -25,11 +29,13 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 
-COLUMNS = ("id", "name", "unit_price", "active", "effective_date")
+COLUMNS = ("id", "name", "unit_price", "tax_rate", "active", "effective_date")
 
 # Digits, optionally a dot and one or two decimals. Rejects "-5", "1,200",
-# "$100", "1e3", "12.345", "NaN" before Decimal ever sees them.
-_PRICE_PATTERN = re.compile(r"\d+(\.\d{1,2})?")
+# "$100", "1e3", "12.345", "7%", "NaN" before Decimal ever sees them.
+# Used for both unit_price and tax_rate.
+_AMOUNT_PATTERN = re.compile(r"\d+(\.\d{1,2})?")
+_HUNDRED = Decimal("100")
 _DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 _BOOLEANS = {"true": True, "false": False}  # compared lowercased, so Excel's TRUE works
 
@@ -53,6 +59,7 @@ class PriceEntry:
     product_id: str
     name: str
     unit_price: Decimal
+    tax_rate: Decimal  # percent; 0 = not taxed
     active: bool
     effective_date: date
 
@@ -72,11 +79,18 @@ def _parse_row(row: dict[str, str], line: int) -> PriceEntry:
         raise fail("name is blank")
 
     price_text = values["unit_price"]
-    if not _PRICE_PATTERN.fullmatch(price_text):
+    if not _AMOUNT_PATTERN.fullmatch(price_text):
         raise fail(f"unit_price {price_text!r} is not a plain amount like 1200 or 1200.50")
     unit_price = Decimal(price_text).quantize(Decimal("0.01"))
     if unit_price <= 0:
         raise fail("unit_price must be greater than zero")
+
+    tax_text = values["tax_rate"]
+    if not _AMOUNT_PATTERN.fullmatch(tax_text):
+        raise fail(f"tax_rate {tax_text!r} is not a plain percentage like 0, 6.5 or 10.25")
+    tax_rate = Decimal(tax_text).quantize(Decimal("0.01"))
+    if tax_rate >= _HUNDRED:
+        raise fail("tax_rate must be below 100")
 
     active_text = values["active"].lower()
     if active_text not in _BOOLEANS:
@@ -94,6 +108,7 @@ def _parse_row(row: dict[str, str], line: int) -> PriceEntry:
         product_id=values["id"],
         name=values["name"],
         unit_price=unit_price,
+        tax_rate=tax_rate,
         active=_BOOLEANS[active_text],
         effective_date=effective_date,
     )
