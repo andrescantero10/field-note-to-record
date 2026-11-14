@@ -45,7 +45,9 @@ _TBD._ All customers and products in this repo are invented.
 
 ## Known limitations
 
-_TBD._
+- Audit log: the hash chain detects edited or deleted entries in the middle of
+  the log, but not removal of the most recent entries (the shortened chain is
+  still valid). Detecting that would need the latest hash stored outside the database.
 
 ## Docs
 
