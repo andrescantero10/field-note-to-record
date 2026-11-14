@@ -56,6 +56,7 @@ discontinued one (`GRIP-2F-50`).
 - Audit log: the hash chain detects edited or deleted entries in the middle of
   the log, but not removal of the most recent entries (the shortened chain is
   still valid). Detecting that would need the latest hash stored outside the database.
+- Quotes are pre-tax. Sales tax (rates, exemptions) is out of scope.
 - Catalog: loaded from a CSV file in the repo. Syncing it from the Zoho CRM
   Products module is planned with the Zoho adapter; Zoho has no price
   effective-date field by default, so that needs a custom field.
