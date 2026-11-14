@@ -1,0 +1,150 @@
+"""Tests for the product catalog."""
+
+from datetime import date, datetime
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+
+from fieldnote.catalog import Catalog, CatalogError, NoCurrentPrice
+
+SAMPLE = Path(__file__).resolve().parent.parent / "data" / "catalog.csv"
+HEADER = "id,name,unit_price,active,effective_date\n"
+GOOD_ROW = "X-1,Test item,100.00,true,2026-01-01\n"
+
+
+@pytest.fixture(scope="module")
+def catalog():
+    return Catalog.from_csv(SAMPLE)
+
+
+def write_csv(tmp_path, text):
+    path = tmp_path / "catalog.csv"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+# --- The sample catalog -------------------------------------------------------
+
+
+def test_sample_catalog_loads_with_decimal_prices(catalog):
+    entry = catalog.current_price("GRIP-VAC-4", date(2026, 11, 14))
+    assert entry.unit_price == Decimal("1875.50")
+    assert isinstance(entry.unit_price, Decimal)
+    assert entry.name == "Vacuum gripper with 4 suction cups"
+
+
+@pytest.mark.parametrize(
+    "on_date, expected",
+    [
+        (date(2026, 6, 30), Decimal("25900.00")),  # day before the change
+        (date(2026, 7, 1), Decimal("26900.00")),   # the change applies on its date
+        (date(2026, 11, 14), Decimal("26900.00")),
+    ],
+)
+def test_latest_price_on_or_before_date_applies(catalog, on_date, expected):
+    assert catalog.current_price("ARM-12KG", on_date).unit_price == expected
+
+
+def test_future_price_is_not_used_early(catalog):
+    assert catalog.current_price("ARM-6KG", date(2026, 12, 31)).unit_price == Decimal("18450.00")
+    assert catalog.current_price("ARM-6KG", date(2027, 1, 1)).unit_price == Decimal("19200.00")
+
+
+# --- Hard stops ---------------------------------------------------------------
+
+
+def test_unknown_product_is_a_hard_stop(catalog):
+    with pytest.raises(NoCurrentPrice) as stop:
+        catalog.current_price("ARM-99KG", date(2026, 11, 14))
+    assert stop.value.reason == "unknown product"
+
+
+def test_product_id_must_match_exactly(catalog):
+    with pytest.raises(NoCurrentPrice):
+        catalog.current_price("arm-6kg", date(2026, 11, 14))
+
+
+def test_product_not_yet_available_is_a_hard_stop(catalog):
+    with pytest.raises(NoCurrentPrice) as stop:
+        catalog.current_price("VIS-3D", date(2026, 11, 14))
+    assert stop.value.reason == "not yet effective"
+
+
+def test_discontinued_product_is_a_hard_stop_with_no_fallback(catalog):
+    # Active at 2480.00 until 2026-09-01, then marked inactive. The old price
+    # must not be used after that date.
+    assert catalog.current_price("GRIP-2F-50", date(2026, 8, 31)).unit_price == Decimal("2480.00")
+    with pytest.raises(NoCurrentPrice) as stop:
+        catalog.current_price("GRIP-2F-50", date(2026, 10, 1))
+    assert stop.value.reason == "inactive"
+
+
+def test_datetime_instead_of_date_is_refused(catalog):
+    with pytest.raises(TypeError):
+        catalog.current_price("ARM-6KG", datetime(2026, 11, 14, 9, 0))
+
+
+# --- Accepted formats ---------------------------------------------------------
+
+
+def test_whole_number_price_and_excel_booleans_are_accepted(tmp_path):
+    path = write_csv(tmp_path, HEADER + "X-1,Test item,1200,TRUE,2026-01-01\n")
+    entry = Catalog.from_csv(path).current_price("X-1", date(2026, 2, 1))
+    assert entry.unit_price == Decimal("1200.00")
+    assert entry.active is True
+
+
+# --- Malformed files are rejected at load time --------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_row",
+    [
+        "X-2,Test item,-5.00,true,2026-01-01",       # negative
+        "X-2,Test item,0.00,true,2026-01-01",        # zero
+        "X-2,Test item,12.345,true,2026-01-01",      # more than 2 decimals
+        'X-2,Test item,"1,200.00",true,2026-01-01',  # thousands separator
+        "X-2,Test item,$100,true,2026-01-01",        # currency symbol
+        "X-2,Test item,1e3,true,2026-01-01",         # scientific notation
+        "X-2,Test item,NaN,true,2026-01-01",
+        "X-2,Test item,,true,2026-01-01",            # missing price
+        "X-2,Test item,100.00,yes,2026-01-01",       # not true/false
+        "X-2,Test item,100.00,,2026-01-01",
+        "X-2,Test item,100.00,true,11/14/2026",      # US-style date
+        "X-2,Test item,100.00,true,20261114",        # compact date
+        "X-2,Test item,100.00,true,2026-13-01",      # month 13
+        ",Test item,100.00,true,2026-01-01",         # blank id
+        "X-2,,100.00,true,2026-01-01",               # blank name
+        "X-2,Gripper, 2 finger,100.00,true,2026-01-01",  # unquoted comma
+    ],
+)
+def test_bad_row_is_rejected_with_its_line_number(tmp_path, bad_row):
+    path = write_csv(tmp_path, HEADER + GOOD_ROW + bad_row + "\n")
+    with pytest.raises(CatalogError, match="line 3"):
+        Catalog.from_csv(path)
+
+
+def test_duplicate_effective_date_for_a_product_is_rejected(tmp_path):
+    path = write_csv(tmp_path, HEADER + GOOD_ROW + "X-1,Test item,120.00,true,2026-01-01\n")
+    with pytest.raises(CatalogError, match="same effective_date"):
+        Catalog.from_csv(path)
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "id,name,unit_price,active\n",                         # missing column
+        "id,name,unit_price,active,effective_date,notes\n",    # extra column
+        "sku,name,unit_price,active,effective_date\n",         # renamed column
+    ],
+)
+def test_wrong_columns_are_rejected(tmp_path, header):
+    path = write_csv(tmp_path, header + GOOD_ROW)
+    with pytest.raises(CatalogError, match="columns"):
+        Catalog.from_csv(path)
+
+
+def test_empty_catalog_is_rejected(tmp_path):
+    with pytest.raises(CatalogError, match="empty"):
+        Catalog.from_csv(write_csv(tmp_path, HEADER))

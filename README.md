@@ -41,13 +41,24 @@ pytest
 
 ## Sample data
 
-_TBD._ All customers and products in this repo are invented.
+All customers and products in this repo are invented.
+
+**Product catalog** (`data/catalog.csv`): one row per dated price entry, with
+columns `id, name, unit_price, active, effective_date`. The price in force on a
+date is the row with the latest `effective_date` on or before it; an inactive
+row means the product is discontinued from that date. A product with no current
+price cannot be quoted. The sample includes a past price change (`ARM-12KG`),
+a future one (`ARM-6KG`), a product not yet available (`VIS-3D`) and a
+discontinued one (`GRIP-2F-50`).
 
 ## Known limitations
 
 - Audit log: the hash chain detects edited or deleted entries in the middle of
   the log, but not removal of the most recent entries (the shortened chain is
   still valid). Detecting that would need the latest hash stored outside the database.
+- Catalog: loaded from a CSV file in the repo. Syncing it from the Zoho CRM
+  Products module is planned with the Zoho adapter; Zoho has no price
+  effective-date field by default, so that needs a custom field.
 
 ## Docs
 
