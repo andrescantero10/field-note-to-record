@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fieldnote"
+dynamic = ["version"]
+description = "Field Note to Record: a voice-first deal-to-document prototype (CEN 4010 course project)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+# Runtime dependencies are added in the task that first needs them.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "hypothesis>=6",
+]
+
+[tool.setuptools.dynamic]
+# Single source of truth for the version: src/fieldnote/__init__.py
+version = { attr = "fieldnote.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"

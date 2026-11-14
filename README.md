@@ -1,0 +1,57 @@
+# Field Note to Record
+
+A voice-first deal-to-document prototype for a small robotics distributor.
+Built as the final project for CEN 4010 (Principles of Software Engineering, FAU).
+
+> **Status:** scaffold only. Sections marked _TBD_ are filled in as each part is built.
+
+## Purpose
+
+A salesperson works only from his phone and does not use the CRM, so the owner
+re-types his visit notes and quotes go out late. This prototype lets him submit
+a short note (typed or dictated in the browser), review the CRM records extracted
+from it, and confirm them before anything is written to Zoho CRM. A confirmed deal
+can then be turned into a draft quote whose figures come only from deterministic
+pricing code, never from the model.
+
+## Architecture
+
+_TBD._ See `docs/architecture.md` once written.
+
+## Setup
+
+Requires Python 3.11 or newer.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env   # defaults run fully offline: fake model, mock Zoho
+```
+
+## Run
+
+_TBD._
+
+## Test
+
+```bash
+pytest
+```
+
+## Sample data
+
+_TBD._ All customers and products in this repo are invented.
+
+## Known limitations
+
+_TBD._
+
+## Docs
+
+- `docs/AI_ASSISTANCE.md`: what AI tools generated, and what was rejected or changed
+- `docs/CHANGES.md`: scope changes from the original design report
+
+## License
+
+MIT. See `LICENSE`.

@@ -1,0 +1,31 @@
+# Secrets: only .env.example is committed
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+
+# Test and tool caches
+.pytest_cache/
+.hypothesis/
+.coverage
+htmlcov/
+
+# Local databases and audit exports (generated at runtime)
+*.db
+*.sqlite3
+exports/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
