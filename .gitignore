@@ -29,3 +29,6 @@ exports/
 .DS_Store
 .vscode/
 .idea/
+
+# Local-only notes with real company details. Never commit.
+private/

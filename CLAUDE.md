@@ -8,6 +8,13 @@ and a confirmed deal can be turned into a draft quote.
 
 The developer must be able to explain every line. Work in small steps.
 
+**Before starting work, read `docs/HANDOFF.md`:** the current state, how the
+developer likes to work, the code conventions, and a design for every remaining
+task. If `private/CRM_NOTES.md` exists, read it too. `private/` is gitignored and
+holds real company details: never commit it or copy from it into a tracked file.
+(A session writing the validation module reads only what its prompt in
+`docs/HANDOFF.md` section 8 allows.)
+
 ## How we work
 
 1. Before writing code for a task, state the plan in a few plain-language lines and wait.
@@ -70,7 +77,9 @@ The developer must be able to explain every line. Work in small steps.
 | `src/fieldnote/pricing.py` | Pricing engine (only producer of figures) |
 | `docs/PRICING_SPEC.md` | Pricing rules: line tax, totals, dollar discount, hard stops |
 | `data/catalog.csv` | Synthetic catalog: one row per dated price entry, with tax rate |
+| `docs/HANDOFF.md` | State, working style, conventions, designs for remaining tasks |
 | `docs/` | AI assistance log, scope changes |
+| `private/` | Local-only notes on the real CRM (gitignored) |
 
 ## Commands
 
