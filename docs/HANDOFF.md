@@ -1,7 +1,9 @@
 # Handoff: where the project stands and how to continue
 
-Written on 2026-11-16 at the end of Week 1, for whichever AI session picks this
-up next. `CLAUDE.md` has the rules. This file has everything else: the state, how
+First written on 2026-11-16 and last refreshed that evening, after Task 11a, for
+whichever AI session picks this up next. Weeks 1 and 2 of the build order are
+done except two small pieces (11b and 10b); Week 3 has not started.
+`CLAUDE.md` has the rules. This file has everything else: the state, how
 the developer likes to work, the conventions the code follows, and a design for
 every remaining task so the next session implements instead of re-deciding.
 
@@ -41,7 +43,7 @@ trusting this section.
 | `57f8769` | Task 9a: `api.py`, `main.py`, author-only rule in `candidates.py` |
 | `3fc536f` | Task 9b: `static/` (page), `GET /products`, `tests/test_page.py` |
 | `33b7de3` | Task 10a: `crm.py` (four actions, `MockCrm`, mode setting) |
-| "Add writer" (see `git log`) | Task 11a: `writer.py` (reviewed note to CRM records, links, lock) |
+| `23863e4` | Task 11a: `writer.py` (reviewed note to CRM records, links, lock) |
 
 Each built task has an "As built" block under its heading in section 7. Read
 the block before touching that module; it lists what later tasks depend on.
@@ -139,7 +141,12 @@ what it does. He asked for this explicitly.
 4. which docs were updated
 5. a proposed commit message
 
-Then stop. He replies "Commit and push" and you do it. He has asked for that
+Then stop. The rhythm of a task is three short messages from him: "Start
+Task N" (you answer with the plan and wait), "Go" (you build, test, break,
+explain, and stop), "Commit and push" (you scan, test, commit, push). Do not
+skip the plan because he said "start", and do not commit because he said "go".
+
+He replies "Commit and push" and you do it. He has asked for that
 after every task since Task 1 (his original instructions said he would commit
 himself; he changed that in practice). Still wait for the words each time.
 
@@ -156,6 +163,14 @@ himself; he changed that in practice). Still wait for the words each time.
   him the one thing only he can do. For the API key, three written steps got
   "how do i do that?"; creating the file, setting the provider and opening it in
   TextEdit, so that he only had to paste and save, worked at once.
+- "Tell me exactly what to do" means numbered steps with the exact address and
+  the exact words to click or type, split into "now" and "later". Say plainly
+  which steps are his and which you will do.
+- Split a task when it has a part that can be tested alone (9a/9b, 10a/10b,
+  11a/11b). He has accepted every split. Say in the plan what the second half is.
+- When the build needs one thing the plan did not have (a retry route, three
+  page files instead of one), build it, and say so under its own heading in the
+  summary with the reason. He has accepted these each time.
 - He does push back when he disagrees: he rejected "an edit counts as
   confirming" and asked for a second tap. Offer a recommendation, then build
   what he chooses and record it under "Changed or rejected by developer".
@@ -210,7 +225,35 @@ cp $SCR/$(basename $F).bak $F && diff -q $F $SCR/$(basename $F).bak && .venv/bin
 Always finish with the `diff -q` and a full test run, and say so. Report the
 result as a table: what was broken, which tests failed.
 
-Two lessons from using it:
+The same thing as a script, which is easier to call many times (save it in the
+scratchpad, never in the repo; back up each file as `<name>.bak` beside it first):
+
+```bash
+#!/bin/zsh
+# usage: mutate.sh <file> <old text> <new text> <label>
+SCR=${0:a:h}; F=$1; B=$SCR/$(basename $F).bak
+cp $B $F
+python3 - "$F" "$2" "$3" <<'PY'
+import sys; p,old,new=sys.argv[1:]; s=open(p).read(); assert old in s, old; open(p,'w').write(s.replace(old,new))
+PY
+echo "### $4"
+OUT=$(.venv/bin/pytest -q -p no:cacheprovider 2>&1)
+echo "$OUT" | tail -1
+echo "$OUT" | grep -E "^(FAILED|ERROR)" | sed 's/ - .*//' | sed -E 's/\[.*//' | sort | uniq -c | head -8
+cp $B $F
+```
+
+Run it with `export LC_ALL=C` first. Some test ids contain odd characters, and
+without that setting `grep` prints "Binary file matches" or zsh prints
+"character not in range" instead of the list. The count line is still right.
+
+Lessons from using it:
+- **Never break `main.py` in a way that makes it read `.env` from the real
+  project folder** (for example changing `load_settings(ROOT / ".env")`). The
+  real file says `LLM_PROVIDER=claude`, so a test would make a paid call.
+- A break that sends the database to the default path creates `fieldnote.db`
+  in the repo root. Delete it afterwards and check `ls *.db` is empty.
+- Refresh the `.bak` copies whenever the file changed since the last round.
 - If a break makes many tests fail, the `grep` above can match the word "failed"
   inside assertion text and push the summary line out of view. When a break
   shows no summary line, rerun that one break with `| tail -1` and report the
@@ -236,6 +279,30 @@ Two lessons from using it:
   which no hand-written test answer had done. After building anything that
   reads model output, try it on a real note with `scripts/try_extraction.py`
   (a paid call: ask the developer first), then turn what you see into a test.
+- **Do not read `.env`, not even through the app's own `load_settings`.** A
+  one-line check of "does his `.env` name a valid mode" was blocked by the
+  permission system, correctly. If something depends on his settings, tell him
+  what line to look at.
+- **Running the server to look at the page.** Start it with the Bash tool in
+  the background and open the address with the browser tool's `navigate`
+  (the browser tool's own "start a dev server" command looks for its settings
+  in a different folder and fails). Use a port other than 8000, which he may be
+  using himself. Stop it afterwards with
+  `kill $(lsof -ti tcp:<port> -sTCP:LISTEN)` and say that you stopped it.
+- **Checking the page.** At phone size, with a scratch server that uses a
+  `FakeProvider` whose answer quotes the note (free). Drive it with real clicks
+  for the first pass, then with short scripts in the browser tool that click
+  buttons and read back the text. Before submitting a hostile note, replace
+  `window.alert` with a counter, because a real alert box freezes the tool.
+  A paid Claude call through the page needs his yes each time; one was made
+  on 2026-11-16 with `normal_02_northgate.txt`.
+- SQLite connections cannot be shared between threads, and FastAPI runs each
+  request on a worker thread. That is why `api.py` opens the audit log and the
+  store per request, inside one lock. Do the same for anything new that holds
+  a connection (`MockCrm`, `Writer`).
+- Installed versions are newer than most documentation examples (FastAPI
+  0.163, Starlette 1.10, Pydantic 2.14, anthropic 2.9 on `httpx2`). When
+  something does not behave as remembered, look at the installed package.
 - `gh` is installed and signed in. The remote is `origin` over HTTPS.
 - **Privacy scan before every commit.** The repo is public. Run the scan command
   from `private/CRM_NOTES.md` over tracked and untracked files and confirm exit
@@ -411,7 +478,9 @@ specifics that later tasks depend on:
   checker to strip fences without asking the developer.
 - Limits: note 5,000 characters, model answer 50,000, 50 items, 20 commitments,
   quantity up to 100,000.
-- `task.due` is kept as the note's words. The reviewer picks the date (Task 9).
+- `task.due` is kept as the note's words. No date picker was built. The writer
+  sends a real due date only when the reviewer edits the field to a date
+  written as `2026-11-20` (see Task 11, "As built").
 - The model-failure audit entry uses a fixed reason and never the provider's own
   error text. Keep that when Task 6b adds real errors.
 
@@ -438,11 +507,14 @@ SQLite, same file as the audit log (`DATABASE_PATH`), separate tables.
 
 - Tables: `notes`, `note_locks` and one `candidates` table. A candidate is one
   reviewable thing with `type` `field`, `item` or `commitment`. There is no
-  separate "record" level; the writer (Task 11) groups by `name` prefix
-  (`account.`, `contact.`, `task.`) and by `type`.
+  separate "record" level; the writer (Task 11a, built) reads the confirmed
+  fields by `name` (`account.name`, `contact.email`, `task.subject`, ...) and
+  the items by `type`.
 - `CandidateStore(db_path, *, policy, audit, product_names, clock)`. Methods:
   `submit_note`, `get_note`, `save_extraction` (once per note), `candidates`,
   `get`, `confirm`, `reject`, `confirm_all`, `edit_value`, `edit_item`, `lock_note`.
+  Added in Task 9a: the author-only rule (`NotAuthor`), `NotFound`, and
+  `note_awaiting_extraction`. Only the writer calls `lock_note`.
 - States: `not_stated`, `pending`, `confirmed`, `rejected`.
 - **Two decisions the developer made** (do not change without asking him):
   - An edit does **not** confirm. It sets the candidate back to `pending`, and an
@@ -472,6 +544,7 @@ SQLite, same file as the audit log (`DATABASE_PATH`), separate tables.
 #### Task 9: review page (FastAPI and one HTML page)
 
 Add `fastapi`, `uvicorn` and `httpx` (needed by the test client) in this task.
+(As built: the test client needs `httpx2`, which is what was added.)
 
 - A small JSON API plus one static, mobile-first HTML page with plain JavaScript.
   No front-end framework.
@@ -558,7 +631,7 @@ Add `fastapi`, `uvicorn` and `httpx` (needed by the test client) in this task.
   impossible to point the app at the production org by accident. Add the setting
   to `.env.example`.
 - **Do not rely on Zoho to prevent duplicates.** Keep a local table
-  `crm_links(candidate_id, module, zoho_id, payload_hash, written_at)`. A repeat
+  `crm_links` (built in Task 11a, keyed by note and kind, not by candidate). A repeat
   confirm finds the link and either does nothing (same hash) or updates that id.
   See `private/CRM_NOTES.md` for which modules have a unique field and which do not.
 - The app does not create quote records in Zoho.
@@ -592,6 +665,40 @@ Add `fastapi`, `uvicorn` and `httpx` (needed by the test client) in this task.
   (a deal's products stay in the app); no catalog sync for now.
 - Case-insensitive email matching and "links must exist" are assumptions about
   the real CRM. Check both against the Developer Edition org in 10b.
+
+**Plan for 10b (the live client). Not started; waits for the developer.**
+What he was told to do (2026-11-16), in his words "exactly what to do":
+1. Now: sign up for the free Developer Edition at `developers.zoho.com/crm/`,
+   **with a personal Zoho account that has no access to the company's CRM**,
+   and say "the Zoho test org is ready".
+2. Then, together: create a "Self Client" at `api-console.zoho.com`, paste its
+   client id and secret into `.env` himself; generate a one-time code there
+   with the scopes you give him, choosing the Developer org when asked; run a
+   helper you write, which trades the code for a refresh token and saves it in
+   `.env` (the code expires in minutes, so one sitting); then confirm the org
+   name and id the app shows, after which the app refuses any other org.
+He never pastes a secret into the chat, and you never read `.env`.
+
+What to build:
+- Read Zoho's current docs first (API v8 at the time of writing: the Self
+  Client page, the scopes page, the token page, upsert for each module, and
+  the organization endpoint). Do not write request shapes from memory.
+- `ZohoCrm` in `crm.py` with the same four actions, using `httpx2`. Add
+  `httpx2` to the runtime dependencies and to `ALLOWED["crm.py"]` in
+  `tests/test_boundaries.py`. Tests use a stub transport, never the network.
+- The latch: `ZOHO_ALLOWED_ORG_ID`. At startup in live mode, ask Zoho which
+  org the token belongs to and refuse to start unless it matches.
+- `scripts/zoho_connect.py`: asks for the one-time code in the terminal (not
+  echoed), exchanges it, writes the refresh token into `.env`, and prints the
+  org name and id for him to confirm. It prints no secret.
+- Map our four records to Zoho's required fields (a deal needs a stage and
+  probably a closing date; a contact needs a last name). Check the field API
+  names in the test org, not in `private/CRM_NOTES.md`, which describes a
+  customized org.
+- Revisit the two README limits with the real API: search for an existing
+  account before creating one, and what a retry does after a crash.
+- `crm_mode` stops raising `NotImplementedError` for `live`; `main.py` passes
+  the right client to the app.
 
 #### Task 11: confirm-and-write flow (`writer.py`)
 
@@ -664,14 +771,15 @@ tier of every action is the table's; the attempt is visible in the audit log.
   `submit_note`, `extract`, `save_extraction`. `assert_nothing_bad_happened`
   holds the outcome checks. Two Hypothesis tests feed arbitrary JSON and
   arbitrary text to the checker.
-- **Extend it, do not replace it.** When the CRM writer (Task 11), quotes (13)
-  and approvals (15) exist, add their steps to `Pipeline.run` and their outcomes
-  to `assert_nothing_bad_happened`: nothing written to the CRM without a
-  confirmed record and a passed policy check; no quote figure differing from
+- **Extend it, do not replace it.** Already added: every note and answer also
+  goes through `POST /notes` (`Pipeline.run_through_api`, Task 9a), nothing
+  reaches the CRM (`assert_nothing_bad_happened` step 5b), and the worst
+  reviewer who confirms everything and taps write (Task 11a). Still to add
+  when quotes (13) and approvals (15) exist: no quote figure differing from
   the pricing engine's; no approval that did not come from the named approver.
   Add a hostile answer whenever a new kind of field or key is introduced.
-- When the review page exists (Task 9), add a test that the script-tag note is
-  shown as text and not run.
+- The script-tag note on the page is covered by `tests/test_page.py` (source
+  checks) and by a hand check in a browser (Task 9b).
 - One real call was made with `hostile_set_total.txt` on Claude Opus 5.5: the
   model ignored the planted instructions. That is an observation about one
   call, not a guarantee, and the design does not rely on it.
@@ -682,6 +790,15 @@ tier of every action is the table's; the attempt is visible in the audit log.
 
 - Input: a confirmed deal's items (catalog ids and quantities) and a discount
   typed by a person.
+- Where the items come from, now that the earlier tasks exist: the confirmed
+  `item` candidates of one note (`product_id`, `quantity`). Recommend allowing
+  a quote only for a note that is locked (written to the CRM), so the items
+  cannot change under the quote. Ask him.
+- The note's confirmed promises ("5% off") are shown next to the discount box
+  as a reminder and are never turned into a number by the app. The person
+  types the dollar amount. `quote.draft` is green.
+- Like Task 9 and 11, split it: the module with tests first, then the route
+  and the page.
 - Calls `price_quote` and stores the result as an unchangeable snapshot,
   including which catalog row priced each line.
 - `NoCurrentPrice` becomes a hard stop shown to the user with the product and the
@@ -774,6 +891,16 @@ listed in the README's limitations by the end.
   Fine for two users; stated in the README.
 - **A note whose extraction keeps failing stays saved with no candidates.**
   It can be retried, but never removed (notes are immutable).
+- **Duplicate accounts across notes.** The writer never writes one note twice,
+  but it does not search the CRM, so two notes about one company make two
+  accounts. Stated in the README; revisit in 10b.
+- **A crash between the CRM's answer and saving the link** could duplicate one
+  record on retry. Stated in the README.
+- **A not-ready write attempt is not logged.** `NotReady` is raised before any
+  policy check, like the store's other "bad request" errors.
+- **The page has no automated browser test,** and the Dictate button has never
+  been tried. Stated in the README. Repeat the hand check after any change to
+  `app.js`.
 - **Audit truncation.** Removing the newest entries leaves a valid shorter chain.
 - **`Catalog(entries)` trusts its input.** Only `Catalog.from_csv` validates
   rows. Tests build `PriceEntry` objects directly on purpose. Any future code
@@ -793,11 +920,12 @@ Ask each one when its task starts, with the recommendation, not before.
 
 | When | Question | Recommendation |
 |---|---|---|
-| Task 6 | Which model provider for the real adapter? | His choice. Keep the fake as default either way. |
-| Task 10b | Has the free Zoho Developer Edition org been created? | Needed before live mode. The mock covers everything until then. |
+| Task 10b | Has the free Zoho Developer Edition org been created? | He has the steps (section 7, Task 10). Wait for "the Zoho test org is ready". The mock covers everything until then. |
+| Task 13 | May a quote be drafted before the note is written to the CRM? | No: only for a locked note, so its items cannot change. |
+| Task 13 | Who may draft a quote for a note? | Its author, the same rule as reviewing. |
+| Task 15 | How does the owner see what is waiting for his approval? | A short list on the page when acting as owner. |
 | Task 10b | How do a deal's products reach Zoho? | Decided for now (2026-11-16): they do not; line items stay in the app. Revisit once the dev org exists. |
 | Later | Add a `catalog.sync` action (pull products from Zoho)? | Decided for now (2026-11-16): no. If added later, he picks its color; yellow for the owner is the suggestion. |
-| Task 7 | A robot is usually sold with add-ons (warranty, shipping). Should extraction suggest them? | No. Extract only what was said. Suggesting add-ons is a later feature and would look like guessing. |
 | Any | The docs placeholders in section 9. | His words, before final submission. |
 | Any | `docs/AI_ASSISTANCE.md` (Task 4 entry) names the person who asked about MCPs by first name. Keep or reword? | Reword to a role ("a stakeholder"). See `private/CRM_NOTES.md`. |
 | Any | Which model for extraction in the demo? Opus 5.5 is the default (a few cents per note). | Keep the default unless cost matters; it is one line in `.env`. |
