@@ -34,8 +34,13 @@ Week 1 is done and pushed to `origin/main`. Check with `git log --oneline` and
 | `74c54e6` | `CLAUDE.md` |
 | `ada236e` | Pricing reworked: per-line tax, dollar discount after tax; `docs/PRICING_SPEC.md` |
 
-Not built yet: everything in Weeks 2 and 3 (section 7). There is no web app, no
-model call and no Zoho call anywhere in the code.
+**Since this file was written:** Task 6 is built (2026-11-16): `llm.py` with
+`ModelRequest`, `ModelResponse`, `ModelProvider`, `FakeProvider`, `get_provider`,
+plus `tests/test_boundaries.py`. Expect 162 passed. The real provider is Task 6b
+and has not been built; the developer's planned choice is Claude.
+
+Not built yet: Task 6b and everything after it (section 7). There is no web app,
+no real model call and no Zoho call anywhere in the code.
 
 Runtime dependencies: none. Dev dependencies: `pytest`, `hypothesis`.
 
