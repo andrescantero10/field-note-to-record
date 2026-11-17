@@ -93,8 +93,19 @@ off after tax.
 ## Known limitations
 
 - CRM: only a mock exists so far, a pretend CRM kept in the local database.
-  Nothing writes to it yet, and the live Zoho client is not built. With
+  The code that writes a reviewed note to it exists, but the page has no
+  button for it yet, and the live Zoho client is not built. With
   `ZOHO_MODE=live` the app refuses to start.
+- CRM duplicates: the app never writes the same note twice, but it does not
+  search the CRM for a company that is already there. A second note about the
+  same company creates a second account (contacts are matched by email). Also,
+  if the app stopped in the instant between the CRM saving a record and the
+  app remembering it, a retry could create that record twice.
+- Follow-up due date: the note says things like "Friday". The task gets a real
+  due date only if the reviewer edits that field to a date written as
+  `2026-11-20`. Otherwise the words are added to the task's subject.
+- What is sent to the CRM: account, contact, deal and follow-up task. A deal's
+  products, promises made to the customer, and prices stay in the app.
 - Dictation: the Dictate button uses the browser's own speech recognition, and
   the browser may send the audio to its maker to turn it into text. It is shown
   only where the browser supports it. Browsers allow it only on a secure

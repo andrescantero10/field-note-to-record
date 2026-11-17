@@ -89,10 +89,11 @@ def test_both_http_libraries_are_restricted():
 # --- Who may use the CRM adapter ---------------------------------------------------
 # Hard rule: only one module talks to Zoho, and only after the policy check.
 # crm.py is that module. It checks no policy itself, so the modules allowed to
-# import it are listed here. Task 11 adds the writer, which checks the policy
-# before every call. The web API is not on the list and must never be.
+# import it are listed here: the writer, which checks the policy before every
+# call, and main.py, which only reads the mode setting at startup. The web API
+# is not on the list and must never be.
 
-CRM_USERS = {"main.py"}
+CRM_USERS = {"main.py", "writer.py"}
 
 
 def imported_own_modules(source: str) -> set[str]:

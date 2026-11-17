@@ -11,8 +11,9 @@ Every note is run against every hostile answer through the real pipeline
 directly and once through the web API. The checks are about what actually
 happened, not about what the model was told.
 
-This file covers what exists today. When the CRM writer and the quote
-approval flow are built, add their outcomes to assert_nothing_bad_happened.
+The CRM writer is covered too: nothing reaches the CRM unless a person has
+reviewed the note and tapped "write", and then only the reviewed words go.
+When the quote approval flow is built, add its outcomes here as well.
 """
 
 import csv
@@ -30,6 +31,7 @@ from fieldnote.api import create_app
 from fieldnote.audit import AuditLog
 from fieldnote.candidates import CandidateStore
 from fieldnote.catalog import Catalog, NoCurrentPrice
+from fieldnote.crm import MockCrm
 from fieldnote.extraction import (
     KINDS,
     MAX_COMMITMENTS,
@@ -45,6 +47,7 @@ from fieldnote.llm import FakeProvider
 from fieldnote.policy import ActionRequest, PolicyEngine, Tier
 from fieldnote.policy_table import POLICY_TABLE
 from fieldnote.pricing import QuoteLine, price_quote
+from fieldnote.writer import NotReady, Writer
 
 ROOT = Path(__file__).resolve().parent.parent
 NOTE_FILES = sorted((ROOT / "data" / "sample_notes").glob("*.txt"))
@@ -216,6 +219,9 @@ class Pipeline:
         self.policy = PolicyEngine(self.audit, POLICY_TABLE)
         self.store = CandidateStore(self.db_path, policy=self.policy, audit=self.audit,
                                     product_names=PRODUCTS, clock=CLOCK)
+        self.crm = MockCrm(self.db_path)
+        self.writer = Writer(self.db_path, store=self.store, crm=self.crm, policy=self.policy,
+                             audit=self.audit, clock=CLOCK)
 
     def run(self, note_text, model_answer):
         """Save the note, extract with a model that returns model_answer, save the result."""
@@ -243,6 +249,8 @@ class Pipeline:
         return response, self.store.candidates(self.note.id)
 
     def close(self):
+        self.writer.close()
+        self.crm.close()
         self.store.close()
         self.audit.close()
 
@@ -312,6 +320,15 @@ def assert_nothing_bad_happened(pipeline, note_text, candidates):
     assert pipeline.audit.verify().ok
     if pipeline.extraction is None:
         assert candidates == () and happened[3][1] == "failed"
+
+    # 5b. Nothing was sent to the CRM, and a "write" tap now, by anyone, sends nothing.
+    assert pipeline.crm.calls == []
+    for actor in ("sales_rep", "owner"):
+        with pytest.raises(NotReady):
+            pipeline.writer.write_note(pipeline.note.id, actor)
+    assert pipeline.crm.calls == []
+    assert len(pipeline.audit.events()) == 4
+    assert all(pipeline.crm.records(m) == [] for m in ("Accounts", "Contacts", "Deals", "Tasks"))
 
     # 6. The app's own part of what the model was sent contains no catalog price.
     (sent,) = pipeline.provider.calls
@@ -428,6 +445,61 @@ def test_one_careless_confirm_all_confirms_only_words_from_the_note(pipeline):
     waiting = [c for c in pipeline.store.candidates(pipeline.note.id) if c.state == "pending"]
     assert {c.type for c in waiting} == {"field", "item", "commitment"}
     assert len(waiting) == 4
+
+
+def test_a_careless_confirm_all_and_write_sends_nothing_to_the_crm(pipeline):
+    note_text = read_note(ROOT / "data" / "sample_notes" / "hostile_owner_approval.txt")
+    pipeline.run(note_text, obeys_every_instruction(note_text))
+    pipeline.store.confirm_all(pipeline.note.id, "sales_rep")
+
+    with pytest.raises(NotReady):
+        pipeline.writer.write_note(pipeline.note.id, "sales_rep")
+
+    assert pipeline.crm.calls == []
+    assert not pipeline.store.get_note(pipeline.note.id).locked
+
+
+@pytest.mark.parametrize("note_file", NOTE_FILES, ids=lambda p: p.stem)
+@pytest.mark.parametrize("hostile_answer", HOSTILE_ANSWERS, ids=lambda f: f.__name__)
+def test_the_most_a_reviewer_who_confirms_everything_can_write(pipeline, note_file, hostile_answer):
+    """The worst reviewer: taps confirm on every suggestion without reading,
+    then taps write. The CRM gets at most four records, holding only values
+    that were on his screen, and nothing else happens."""
+    note_text = read_note(note_file)
+    pipeline.run(note_text, hostile_answer(note_text))
+    for c in pipeline.store.candidates(pipeline.note.id):
+        if c.state != "pending":
+            continue
+        if c.type == "item" and c.product_id is None:
+            pipeline.store.reject(c.id, "sales_rep")  # the app refuses to confirm it
+        else:
+            pipeline.store.confirm(c.id, "sales_rep")
+
+    try:
+        pipeline.writer.write_note(pipeline.note.id, "sales_rep")
+    except NotReady:
+        assert pipeline.crm.calls == []  # no account or contact name: nothing is sent
+        return
+
+    shown = {c.value for c in pipeline.store.candidates(pipeline.note.id) if c.state == "confirmed"}
+    assert set(pipeline.crm.calls) <= {"save_account", "save_contact", "save_deal", "create_task"}
+    assert len(pipeline.crm.calls) <= 4
+    (account,) = pipeline.crm.records("Accounts")
+    (contact,) = pipeline.crm.records("Contacts")
+    assert account.fields["name"] in shown and contact.fields["name"] in shown
+    assert contact.fields["email"] in shown | {None} and contact.fields["phone"] in shown | {None}
+    for deal in pipeline.crm.records("Deals"):
+        assert deal.fields["name"] == f"{account.fields['name']} - 2026-11-16"
+    for task in pipeline.crm.records("Tasks"):
+        assert any(task.fields["subject"].startswith(value) for value in shown if value)
+    for module in ("Accounts", "Contacts", "Deals", "Tasks"):
+        for record in pipeline.crm.records(module):
+            assert not any(word in key for key in record.fields for word in MONEY_WORDS)
+
+    # Every CRM entry in the log is the sales rep's, and the chain is intact.
+    crm_entries = [e for e in pipeline.audit.events() if e.action_type == "crm.upsert"]
+    assert crm_entries and all(e.actor == "sales_rep" for e in crm_entries)
+    assert pipeline.audit.verify().ok
 
 
 def test_nothing_in_a_note_or_an_answer_changes_the_policy(tmp_path):

@@ -22,7 +22,7 @@ sections 6 and 7 here or any pricing or catalog code.
 ## 1. State at the end of 2026-11-16
 
 Everything below is committed and pushed to `origin/main`. Check with
-`git log --oneline` and `.venv/bin/pytest -q` (expect **851 passed**) before
+`git log --oneline` and `.venv/bin/pytest -q` (expect **999 passed**) before
 trusting this section.
 
 | Commit | What |
@@ -40,7 +40,8 @@ trusting this section.
 | `34fa696` | Task 12: `tests/test_injection.py`, `data/sample_notes/` |
 | `57f8769` | Task 9a: `api.py`, `main.py`, author-only rule in `candidates.py` |
 | `3fc536f` | Task 9b: `static/` (page), `GET /products`, `tests/test_page.py` |
-| "Add CRM adapter" (see `git log`) | Task 10a: `crm.py` (four actions, `MockCrm`, mode setting) |
+| `33b7de3` | Task 10a: `crm.py` (four actions, `MockCrm`, mode setting) |
+| "Add writer" (see `git log`) | Task 11a: `writer.py` (reviewed note to CRM records, links, lock) |
 
 Each built task has an "As built" block under its heading in section 7. Read
 the block before touching that module; it lists what later tasks depend on.
@@ -51,10 +52,11 @@ or edited one at a time, with every step in the audit log. All of that can be
 done from the phone page (`static/`), which talks to the web API (`api.py`).
 Pricing works on its own. Nothing connects a confirmed deal to pricing yet.
 
-The CRM adapter (`crm.py`) exists with a mock, but nothing calls it yet.
+The writer (`writer.py`) can send a reviewed note to the mock CRM and lock it,
+but no route or button calls the writer yet.
 
-**Not built yet:** the live Zoho client (10b), the write flow (11), and all of
-Week 3 (13 to 18). There is no Zoho call anywhere in the code.
+**Not built yet:** the live Zoho client (10b), the write route and button
+(11b), and all of Week 3 (13 to 18). There is no Zoho call anywhere in the code.
 
 **Dependencies.** Runtime: `anthropic` (used only in `llm.py`), `fastapi`,
 `uvicorn`. Dev: `pytest`, `hypothesis`, `httpx2`. FastAPI's test client now
@@ -76,22 +78,28 @@ and make a paid call.
 
 ### Start here next
 
-**Task 11, the confirm-and-write flow (`writer.py`).** Task 10a (the CRM
-adapter with its mock) is done; see its "As built" block in section 7. Task 10b
-(the live Zoho client) waits until the developer says he has created the free
-Zoho Developer Edition org; do not start it before that, and read Zoho's
-current API documentation first.
+**Task 11b, the "Write to CRM" button.** Task 11a (the writer) is done; see
+its "As built" block in section 7. What 11b needs:
+- A route `POST /notes/{note_id}/write` in `api.py` that calls
+  `Writer.write_note`. **`api.py` must not import `crm`** (a boundary test
+  forbids it): `create_app` should be handed a function that opens the CRM
+  client (built in `main.py` from `get_crm`), and tests hand it a `MockCrm`.
+  Open the client and the `Writer` per request, like the store.
+- Error answers: `NotReady` is a `ValueError`, so it already becomes a 400
+  with its message; `ActionRefused` is 403; add `CrmError` as 502 with a fixed
+  message (never the CRM's own text).
+- Add the route to `ROUTES` and `CHANGES` in `tests/test_api.py`, and run
+  every hostile note through it in `tests/test_injection.py`.
+- On the page: a "Write to CRM" button shown when nothing is "to review",
+  the list of what was written, and the locked state. Check it by hand in a
+  browser (the page cannot be run by pytest).
 
-Before writing Task 11, put these to the developer, each with a recommendation:
-- **The task's due date.** The candidate holds the note's words ("Friday"),
-  and `crm.Task.due_date` is a real date or nothing. Nobody built a date
-  picker in Task 9. Recommendation: send no due date and put the words in the
-  task's subject ("Call her (due: Friday)"), and list it as a limitation.
-- **What a deal is called.** Recommendation: account name plus the note's date.
-- **Which confirmed fields are required before writing.** Recommendation: the
-  account name and the contact name; refuse with a clear message otherwise.
+Task 10b (the live Zoho client) waits until the developer says he has created
+the free Zoho Developer Edition org, with a personal account that has no access
+to the company's CRM. He was given the steps on 2026-11-16. Do not start it
+before that, and read Zoho's current API documentation first.
 
-Then follow the usual workflow: short plan, wait for "go".
+Follow the usual workflow: short plan, wait for "go".
 
 To look at the page without paid calls, run the server with the fake model
 (every field comes back "not stated"):
@@ -245,6 +253,7 @@ Do not reopen these unless the developer does.
 | Audit log | Append-only by three layers. Outcomes are exactly `allowed`, `refused`, `succeeded`, `failed`. The log does not validate `action_type`. |
 | Policy table | A Python file, read-only mapping. Red rules name their approver. Only `quote.release_discounted` is red (approver `owner`); `crm.upsert` and `quote.release` are yellow; the rest are green. |
 | Actors | Plain strings: `sales_rep`, `owner`, `system`. The web API takes the acting user from the `X-Acting-As` header (`sales_rep` or `owner`); no login (section 9). Decided 2026-11-16. |
+| Writing to the CRM | A note is written whole, when nothing is pending and the account and contact names are confirmed; then it is locked. Deal name is account plus note date. A due field typed as a date is sent as one; other words go into the task subject. Decided 2026-11-16. |
 | Who reviews a note | Only its author confirms, rejects, edits or re-extracts. Either user may read it. Enforced in the store and logged. Decided 2026-11-16. |
 | Catalog | CSV file in the repo, one row per dated price entry, with `tax_rate`. The app prices from its own copy, never live from Zoho. |
 | Pricing | As in `docs/PRICING_SPEC.md`: tax per line rounded half-up, subtotal includes tax, dollar discount after tax, any discount is red. |
@@ -597,6 +606,39 @@ Tests: an unconfirmed record is not written; confirming twice produces one CRM
 record and an audit entry saying it was already written; a CRM failure is logged
 and can be retried safely.
 
+**As built, 11a (the writer), 2026-11-16.** `src/fieldnote/writer.py`,
+`tests/test_writer.py`.
+- `Writer(db_path, *, store, crm, policy, audit, clock)` and
+  `write_note(note_id, actor) -> WriteResult(records, locked)`. Each record is
+  `WrittenRecord(kind, crm_id, result)` with result `written`, `updated` or
+  `already written`.
+- Works on a whole note, not one candidate: account and contact always, a deal
+  only if a product was confirmed, a task only if a follow-up was confirmed.
+  Promises, products and prices are not sent.
+- Ready means: no candidate is pending, and `account.name` and `contact.name`
+  are confirmed. Otherwise `NotReady` (a `ValueError`) with `.problems`.
+  A not-ready attempt is not logged and checks no policy.
+- One policy check before every CRM call:
+  `ActionRequest("crm.upsert", requester=actor, record_owner=note.author,
+  approved_by=actor)`. Yellow, so only the author's own tap passes. The check
+  comes before the link lookup, so a non-author is refused even on a note that
+  was already written.
+- Table `crm_links(note_id, kind, crm_id, payload_hash, written_at)`, primary
+  key `(note_id, kind)`. Same fingerprint: nothing is sent. Changed: the same
+  record is updated through `existing_id`. A task that has a link is never
+  sent again, because the CRM has no task update.
+- After the last record, the note is locked and one summary entry is logged.
+  A `CrmError` is logged as `failed` with only the note and the kind, then
+  raised; a retry continues from the links.
+- Deal name: `"<account name> - <note date>"`. Task due: a value typed exactly
+  as `2026-11-20` (spaces around it ignored) becomes `due_date`; any other
+  words are added to the subject as `(due: ...)` unless already in it.
+  All three were decided by the developer on 2026-11-16.
+- Known limits (in the README): a second note about the same company makes a
+  second account, because the writer does not search the CRM; and a crash
+  between the CRM's answer and saving the link could duplicate a record.
+  Both are worth revisiting in 10b (search before create).
+
 #### Task 12: injection test cases (`tests/test_injection.py`)
 
 Test two attackers, not one.
@@ -755,7 +797,6 @@ Ask each one when its task starts, with the recommendation, not before.
 | Task 10b | Has the free Zoho Developer Edition org been created? | Needed before live mode. The mock covers everything until then. |
 | Task 10b | How do a deal's products reach Zoho? | Decided for now (2026-11-16): they do not; line items stay in the app. Revisit once the dev org exists. |
 | Later | Add a `catalog.sync` action (pull products from Zoho)? | Decided for now (2026-11-16): no. If added later, he picks its color; yellow for the owner is the suggestion. |
-| Task 11 | Task due date, deal name, required fields before a write. | See "Start here next" in section 1. |
 | Task 7 | A robot is usually sold with add-ons (warranty, shipping). Should extraction suggest them? | No. Extract only what was said. Suggesting add-ons is a later feature and would look like guessing. |
 | Any | The docs placeholders in section 9. | His words, before final submission. |
 | Any | `docs/AI_ASSISTANCE.md` (Task 4 entry) names the person who asked about MCPs by first name. Keep or reword? | Reword to a role ("a stakeholder"). See `private/CRM_NOTES.md`. |
