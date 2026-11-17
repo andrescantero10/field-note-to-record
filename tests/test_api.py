@@ -114,6 +114,7 @@ def all_keys(value):
 
 # (method, path as the app declares it, a real path, a valid body)
 ROUTES = [
+    ("GET", "/products", "/products", None),
     ("POST", "/notes", "/notes", {"text": NOTE}),
     ("GET", "/notes/{note_id}", "/notes/1", None),
     ("POST", "/notes/{note_id}/extract", "/notes/1/extract", None),
@@ -123,8 +124,11 @@ ROUTES = [
     ("POST", "/candidates/{candidate_id}/value", "/candidates/1/value", {"value": "Changed Inc"}),
     ("POST", "/candidates/{candidate_id}/item", "/candidates/7/item", {"quantity": 5}),
 ]
-CHANGES = [route for route in ROUTES if route[1] not in ("/notes", "/notes/{note_id}")]
-BUILT_IN = {"/openapi.json", "/docs", "/docs/oauth2-redirect"}  # FastAPI's own help pages
+WITH_ID = [route for route in ROUTES if "{" in route[1]]
+CHANGES = [route for route in WITH_ID if route[1] != "/notes/{note_id}"]
+# Routes that need no user: FastAPI's own help pages, and the three files of
+# the phone page (the page holds no data; tests/test_page.py covers it).
+BUILT_IN = {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/", "/app.js", "/app.css"}
 
 
 def call(client, route, headers):
@@ -386,7 +390,7 @@ def test_either_user_may_read_a_note(client, saved):
     assert as_owner.json() == as_rep.json()
 
 
-@pytest.mark.parametrize("route", ROUTES[1:], ids=lambda r: f"{r[0]} {r[1]}")
+@pytest.mark.parametrize("route", WITH_ID, ids=lambda r: f"{r[0]} {r[1]}")
 def test_an_unknown_id_is_not_found(client, saved, provider, route):
     method, _, path, body = route
     missing = path.replace("/1", "/999").replace("/7", "/999")

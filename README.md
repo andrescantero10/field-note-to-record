@@ -3,8 +3,8 @@
 A voice-first deal-to-document prototype for a small robotics distributor.
 Built as the final project for CEN 4010 (Principles of Software Engineering, FAU).
 
-> **Status:** in progress. The web API works; the phone page, the Zoho writer and
-> quotes are not built yet. Sections marked _TBD_ are filled in as each part is built.
+> **Status:** in progress. Submitting a note and reviewing its suggestions works
+> from the phone page; the Zoho writer and quotes are not built yet. Sections marked _TBD_ are filled in as each part is built.
 
 ## Purpose
 
@@ -32,14 +32,22 @@ cp .env.example .env   # defaults run fully offline: fake model, mock Zoho
 
 ## Run
 
-Start the web API (the phone page that will use it is not built yet):
+Start the app:
 
 ```bash
 .venv/bin/uvicorn --factory fieldnote.main:app
 ```
 
-Then open <http://127.0.0.1:8000/docs> to see and try every route. Each request
-must say who is acting, in a header named `X-Acting-As`, with the value
+Then open <http://127.0.0.1:8000/>. Pick who is acting, write a visit note,
+submit it, and review the suggestions: tap one to see where it came from in the
+note, then confirm, reject or edit it.
+
+With the default settings (the fake model) every field comes back "not stated",
+because the fake reads nothing. Real suggestions need `LLM_PROVIDER=claude`
+(see below).
+
+The routes behind the page are listed at <http://127.0.0.1:8000/docs>. Each
+request must say who is acting, in a header named `X-Acting-As`, with the value
 `sales_rep` or `owner`.
 
 To try one extraction from the command line:
@@ -84,6 +92,14 @@ off after tax.
 
 ## Known limitations
 
+- Dictation: the Dictate button uses the browser's own speech recognition, and
+  the browser may send the audio to its maker to turn it into text. It is shown
+  only where the browser supports it. Browsers allow it only on a secure
+  (HTTPS) page or on `localhost`, so on a phone reaching this prototype over
+  plain HTTP the button will not work; use the keyboard's microphone key there.
+  The button has not been tested.
+- The page is checked by tests that read its source and by hand in a browser.
+  There are no automated browser tests.
 - No login. The app believes the `X-Acting-As` header, so anyone who can reach
   the server can act as either user. The rules about who may do what (only a
   note's author reviews it; a discounted quote needs the owner) are enforced

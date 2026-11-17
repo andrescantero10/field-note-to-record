@@ -22,7 +22,7 @@ sections 6 and 7 here or any pricing or catalog code.
 ## 1. State at the end of 2026-11-16
 
 Everything below is committed and pushed to `origin/main`. Check with
-`git log --oneline` and `.venv/bin/pytest -q` (expect **714 passed**) before
+`git log --oneline` and `.venv/bin/pytest -q` (expect **773 passed**) before
 trusting this section.
 
 | Commit | What |
@@ -38,7 +38,8 @@ trusting this section.
 | `070cf7f` | Task 8: `candidates.py` (candidate store) |
 | `be1f847` | Task 6b: `ClaudeProvider`, `config.py`, `scripts/try_extraction.py`; word-for-word rule relaxed |
 | `34fa696` | Task 12: `tests/test_injection.py`, `data/sample_notes/` |
-| "Add web API" (see `git log`) | Task 9a: `api.py`, `main.py`, author-only rule in `candidates.py` |
+| `57f8769` | Task 9a: `api.py`, `main.py`, author-only rule in `candidates.py` |
+| "Add phone page" (see `git log`) | Task 9b: `static/` (page), `GET /products`, `tests/test_page.py` |
 
 Each built task has an "As built" block under its heading in section 7. Read
 the block before touching that module; it lists what later tasks depend on.
@@ -46,12 +47,11 @@ the block before touching that module; it lists what later tasks depend on.
 **What works end to end today:** a note is saved, sent to the fake model or to
 Claude, checked against the note, stored as candidates, and confirmed, rejected
 or edited one at a time, with every step in the audit log. All of that can be
-done over HTTP through the web API (`api.py`). Pricing works on its own. Nothing
-connects a confirmed deal to pricing yet.
+done from the phone page (`static/`), which talks to the web API (`api.py`).
+Pricing works on its own. Nothing connects a confirmed deal to pricing yet.
 
-**Not built yet:** the phone page (Task 9b), the Zoho adapter and the write flow
-(10, 11), and all of Week 3 (13 to 18). There is no HTML and no Zoho call
-anywhere in the code.
+**Not built yet:** the Zoho adapter and the write flow (10, 11), and all of
+Week 3 (13 to 18). There is no Zoho call anywhere in the code.
 
 **Dependencies.** Runtime: `anthropic` (used only in `llm.py`), `fastapi`,
 `uvicorn`. Dev: `pytest`, `hypothesis`, `httpx2`. FastAPI's test client now
@@ -73,24 +73,18 @@ and make a paid call.
 
 ### Start here next
 
-**Task 9b, the phone page.** 9a (the API) is done; see its "As built" block in
-section 7. What 9b needs:
-- One static, mobile-first HTML file with plain JavaScript, served by the app
-  (a route for `/`). It sends `X-Acting-As` from a simple "acting as" choice.
-- A `GET /products` route that returns product ids and names, never prices, for
-  the item-edit dropdown (`Catalog.product_names()`).
-- **Every new route must be added to `ROUTES` in `tests/test_api.py`.**
-  `test_the_route_list_above_is_complete` fails otherwise. A page route that
-  needs no user goes in `BUILT_IN` instead, with a reason.
-- The script-tag rule: render every piece of text with `textContent`. Test it
-  two ways: a test that reads the page's source and fails on `innerHTML`,
-  `outerHTML`, `insertAdjacentHTML` or `document.write`, and a manual check in
-  a browser with `data/sample_notes/hostile_*` (say so in the summary).
-- With the default fake model every field comes back "not stated". For a demo
-  that shows real suggestions, either use Claude (paid) or add a canned demo
-  answer; ask the developer which.
+**Task 10, the Zoho adapter (`crm.py`), mock first.** Task 9 (API and phone
+page) is done; see its "As built" blocks in section 7. Before writing Task 10,
+put its three questions from section 10 to the developer, each with its
+recommendation. Then follow the usual workflow: short plan, wait for "go".
 
-Follow the usual workflow: short plan, wait for "go".
+To look at the page without paid calls, run the server with the fake model
+(every field comes back "not stated"):
+`LLM_PROVIDER=fake DATABASE_PATH=<scratch>/try.db .venv/bin/uvicorn --factory fieldnote.main:app`
+and open `http://127.0.0.1:8000/`. For a free check with real-looking
+suggestions, write a scratch script that calls `create_app` with a
+`FakeProvider` whose responder quotes words from the note (not committed; the
+9b check did this). The developer chose Claude for the demo.
 
 ## 2. Working with the developer
 
@@ -498,6 +492,32 @@ Add `fastapi`, `uvicorn` and `httpx` (needed by the test client) in this task.
 - `tests/test_injection.py` now also runs every note and hostile answer through
   `POST /notes` (`Pipeline.run_through_api`). Extend that when routes that
   write to the CRM or build quotes are added.
+
+**As built, 9b (the phone page), 2026-11-16.** `src/fieldnote/static/`
+(`index.html`, `app.js`, `app.css`), `tests/test_page.py`.
+- Three files, not one: with the script in its own file the server can send
+  `Content-Security-Policy: default-src 'self'`, so the browser refuses inline
+  script and anything from another site. That is the second lock; the first is
+  that `app.js` only ever shows text with `textContent` or text nodes.
+- Served by three fixed routes (`/`, `/app.js`, `/app.css`; `api.PAGE_FILES`),
+  no user needed. There is no general "static files" route on purpose.
+- `GET /products` (needs a user): ids and names for the product list, no prices.
+- `app.js` decides nothing. One function (`call`) sends every request with
+  `X-Acting-As`. After each decision it reloads the note from the server and
+  redraws. The note's number is kept in the address (`#note=3`).
+- Spans are counted in whole characters by Python; the page splits the note
+  with `Array.from` before slicing, so an emoji does not shift the highlight.
+- Dictation uses the browser's speech recognition when present; the button is
+  hidden otherwise. It was **not tested** (it needs a voice). On a phone it
+  needs HTTPS, which the prototype does not have.
+- **The page cannot be run by pytest.** `tests/test_page.py` reads its source
+  (no call that turns text into code, no inline script, style or handler,
+  nothing loaded from another site, one `fetch`). Behavior was checked by hand
+  in a browser; repeat that check after any change to `app.js` (see the Task 9b
+  entry in `docs/AI_ASSISTANCE.md` for what was checked).
+- When a later task adds a page action (write to CRM, draft a quote), add its
+  route to `ROUTES` in `tests/test_api.py` and keep prices out of every answer
+  that is not the quote itself.
 
 #### Task 10: Zoho adapter (`crm.py`), mock first
 

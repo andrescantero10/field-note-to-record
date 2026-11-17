@@ -1,0 +1,102 @@
+/* The phone page. Sized for a phone first; on a wide screen it stays a narrow column. */
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  font: 16px/1.4 system-ui, -apple-system, sans-serif;
+  color: #1c2430;
+  background: #f4f5f7;
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  color: #fff;
+  background: #1c2430;
+}
+h1 { flex: 1; margin: 0; font-size: 1.05rem; }
+h2 { margin: 1rem 0 0.5rem; font-size: 1rem; }
+
+/* Room at the bottom so the message bar never covers the last button. */
+main { max-width: 40rem; margin: 0 auto; padding: 0 1rem 5rem; }
+
+/* 16px text in inputs stops phones from zooming in when one is tapped. */
+textarea, input, select, button { font: inherit; }
+textarea, input, .editor select {
+  width: 100%;
+  padding: 0.6rem;
+  border: 1px solid #b6bcc6;
+  border-radius: 8px;
+  background: #fff;
+}
+
+/* 44px is the smallest size a finger hits reliably. */
+button {
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 1px solid #b6bcc6;
+  border-radius: 8px;
+  color: inherit;
+  background: #fff;
+}
+button.main { color: #fff; background: #1f5fbf; border-color: #1f5fbf; }
+button:disabled { opacity: 0.5; }
+.buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.6rem 0; }
+
+/* The note stays in view while the suggestions scroll under it. */
+#note-view {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  max-height: 35vh;
+  overflow: auto;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid #d5d9e0;
+  border-radius: 8px;
+  background: #fff;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+mark { background: #ffe27a; }
+
+.hint, .reason { font-size: 0.85rem; color: #5b6573; }
+
+#candidates { margin: 0; padding: 0; list-style: none; }
+.candidate {
+  margin: 0.6rem 0;
+  padding: 0.75rem;
+  border: 1px solid #d5d9e0;
+  border-left: 6px solid #9aa3af;
+  border-radius: 8px;
+  background: #fff;
+}
+.candidate.confirmed { border-left-color: #2e8b57; }
+.candidate.rejected { border-left-color: #c0392b; }
+.candidate.rejected .value { text-decoration: line-through; }
+.candidate.not_stated .value { color: #5b6573; font-style: italic; }
+.candidate.selected { outline: 2px solid #1f5fbf; }
+
+.label { font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase; color: #5b6573; }
+.value { font-size: 1.05rem; overflow-wrap: anywhere; }
+.tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.35rem 0; }
+.tag { padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; background: #e7eaef; }
+.tag.warn { background: #fde6c8; }
+.editor > * { margin-top: 0.5rem; }
+
+#message {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 0.8rem 1rem;
+  color: #fff;
+  background: #1c2430;
+}

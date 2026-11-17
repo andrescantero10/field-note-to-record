@@ -5,6 +5,8 @@ hands the request to the candidate store or to the extraction step, and turns
 the result (or the refusal) into JSON. The rules live in those modules, so a
 request cannot get around them by coming through the web.
 
+    GET  /  /app.js  /app.css           the phone page (three fixed files)
+    GET  /products                      product ids and names, never prices
     POST /notes                         save a note and extract suggestions
     GET  /notes/{id}                    the note and its suggestions
     POST /notes/{id}/extract            try the extraction again after it failed
@@ -31,11 +33,12 @@ import threading
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path as FilePath
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Path, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict
 
 from fieldnote import __version__
@@ -52,6 +55,18 @@ from fieldnote.policy_table import POLICY_TABLE
 USERS = ("sales_rep", "owner")
 
 MAX_ID = 2**63 - 1  # the largest id SQLite can store
+
+# The phone page: address -> file in the static folder. Only these are served.
+STATIC = FilePath(__file__).parent / "static"
+PAGE_FILES = {"/": "index.html", "/app.js": "app.js", "/app.css": "app.css"}
+PAGE_HEADERS = {
+    # The browser may load and run only files from this server: no inline
+    # script, no script from another site. A second lock, in case text from a
+    # note ever reached the page as HTML.
+    "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store",
+}
 
 UNKNOWN_USER = "say who is acting: send the X-Acting-As header with one of " + ", ".join(USERS)
 BAD_REQUEST_SHAPE = "the request is not in the expected form"
@@ -208,6 +223,26 @@ def create_app(
     @app.exception_handler(ValueError)
     def broke_a_rule(request: Request, error: ValueError) -> JSONResponse:
         return _error(400, str(error))
+
+    # --- The page and the product list ------------------------------------------------
+
+    def serve(file_name: str) -> Any:
+        def page_file() -> FileResponse:
+            return FileResponse(STATIC / file_name, headers=PAGE_HEADERS)
+        return page_file
+
+    for address, file_name in PAGE_FILES.items():
+        app.get(address, include_in_schema=False)(serve(file_name))
+
+    @app.get("/products")
+    def list_products(actor: Actor) -> Any:
+        """For the "pick a product" list. Ids and names only: no prices."""
+        return {
+            "products": [
+                {"id": product_id, "name": name}
+                for product_id, name in sorted(product_names.items())
+            ]
+        }
 
     # --- Notes ---------------------------------------------------------------------
 

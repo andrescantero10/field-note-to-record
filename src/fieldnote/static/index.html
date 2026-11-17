@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Field Note to Record</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>Field Note to Record</h1>
+    <label for="actor">Acting as</label>
+    <select id="actor">
+      <option value="sales_rep">Sales rep</option>
+      <option value="owner">Owner</option>
+    </select>
+  </header>
+
+  <main>
+    <section id="write">
+      <h2>New visit note</h2>
+      <textarea id="note-text" rows="7" maxlength="5000"
+        placeholder="Who you met, what they want, what you promised, what to do next."></textarea>
+      <div class="buttons">
+        <button id="dictate" type="button" hidden>Dictate</button>
+        <button id="submit" type="button" class="main">Submit note</button>
+      </div>
+    </section>
+
+    <section id="review" hidden>
+      <div class="buttons">
+        <button id="new-note" type="button">New note</button>
+      </div>
+      <h2 id="review-title">Review</h2>
+      <p id="note-view"></p>
+      <p class="hint">Tap a suggestion to see where it came from in the note.</p>
+      <div class="buttons">
+        <button id="retry" type="button" class="main" hidden>Try again</button>
+        <button id="confirm-all" type="button" class="main">Confirm all</button>
+      </div>
+      <ul id="candidates"></ul>
+    </section>
+  </main>
+
+  <p id="message" role="status" aria-live="polite" hidden></p>
+</body>
+</html>
