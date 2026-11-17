@@ -31,7 +31,16 @@ cp .env.example .env   # defaults run fully offline: fake model, mock Zoho
 
 ## Run
 
-_TBD._
+The web app is not built yet. To try one extraction from the command line:
+
+```bash
+.venv/bin/python scripts/try_extraction.py
+```
+
+With the default settings this uses the fake model, which returns an empty
+answer. To use Claude, set `LLM_PROVIDER=claude` and `ANTHROPIC_API_KEY` in
+`.env`. That makes a real, paid API call and sends the note's text to Anthropic,
+so use invented notes only.
 
 ## Test
 
@@ -61,6 +70,10 @@ off after tax.
 - Audit log: the hash chain detects edited or deleted entries in the middle of
   the log, but not removal of the most recent entries (the shortened chain is
   still valid). Detecting that would need the latest hash stored outside the database.
+- Model: with `LLM_PROVIDER=claude`, the text of each note is sent to Anthropic's
+  API. The prototype has no consent step or redaction for that, so only invented
+  notes should be used. The provider has been tried on one example note, not
+  measured on a test set.
 - Pricing: the tax rate comes from the product's catalog row, not from the
   delivery address. No per-line discounts, no "adjustment" amount, purchase
   quotes only (no rental or leasing). Tax rounding is assumed to be half-up per

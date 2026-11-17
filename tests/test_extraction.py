@@ -164,6 +164,23 @@ def test_reworded_value_is_low_confidence():
     assert name.needs_individual_confirmation
 
 
+@pytest.mark.parametrize("value", ["Call her", "Friday", "her Friday", "Call her Friday"])
+def test_value_copied_from_inside_its_quote_is_not_flagged(value):
+    # What a real model did on the first live run: one quote, a shorter value.
+    answer = {"task": {"subject": field("Call her Friday", value=value)}}
+    subject = check(answer).field("task.subject")
+    assert subject.value == value
+    assert (subject.confidence, subject.reasons) == ("high", ())
+    assert quoted(NOTE, subject.span) == "Call her Friday"
+
+
+@pytest.mark.parametrize("value", ["Call Dana Friday", "call her", "Friday.", "Fri day", "Call her on Friday"])
+def test_value_that_is_not_inside_its_quote_is_still_flagged(value):
+    answer = {"task": {"subject": field("Call her Friday", value=value)}}
+    subject = check(answer).field("task.subject")
+    assert (subject.confidence, subject.reasons) == ("low", (REWORDED,))
+
+
 def test_repeated_words_are_low_confidence_and_point_at_the_first_place():
     note = "Called Dana. Dana wants a demo."
     name = check({"contact": {"name": field("Dana")}}, note=note).field("contact.name")
@@ -507,3 +524,44 @@ def test_instructions_inside_a_note_change_nothing(catalog, policy, audit):
         ("extraction.run", "allowed"),
         ("extraction.run", "succeeded"),
     ]
+
+
+# --- The answer shape sent to the provider -------------------------------------------
+
+
+def test_request_carries_the_answer_shape(catalog):
+    from fieldnote.extraction import OUTPUT_SCHEMA
+
+    assert build_request(NOTE, catalog.product_names()).json_schema is OUTPUT_SCHEMA
+
+
+def test_answer_shape_matches_what_the_checker_reads():
+    from fieldnote import extraction as ex
+
+    shape = ex.OUTPUT_SCHEMA
+    assert tuple(shape["properties"]) == ex._TOP_KEYS
+    assert shape["required"] == list(ex._TOP_KEYS) and shape["additionalProperties"] is False
+
+    for section, names in ex.SECTIONS.items():
+        assert tuple(shape["properties"][section]["properties"]) == names
+        for name in names:
+            null, field_shape = shape["properties"][section]["properties"][name]["anyOf"]
+            assert null == {"type": "null"}
+            assert tuple(field_shape["properties"]) == ex._FIELD_KEYS
+            assert field_shape["properties"]["kind"]["enum"] == list(ex.KINDS)
+
+    item_shape = shape["properties"]["items"]["items"]
+    assert tuple(item_shape["properties"]) == ex._ITEM_KEYS
+    assert item_shape["properties"]["quantity"] == {"type": "integer"}
+    commitment_shape = shape["properties"]["commitments"]["items"]
+    assert tuple(commitment_shape["properties"]) == ex._COMMITMENT_KEYS
+
+    # No key for money anywhere in the shape.
+    text = json.dumps(shape)
+    for word in ("price", "total", "discount", "tax", "amount"):
+        assert word not in text
+
+
+def test_an_answer_of_exactly_that_shape_passes_the_checker():
+    result = check(GOOD_ANSWER)
+    assert result.dropped == ()

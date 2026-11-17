@@ -11,7 +11,9 @@ requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 # Runtime dependencies are added in the task that first needs them.
-dependencies = []
+dependencies = [
+    "anthropic>=2.9,<3",  # the real model provider (src/fieldnote/llm.py only)
+]
 
 [project.optional-dependencies]
 dev = [

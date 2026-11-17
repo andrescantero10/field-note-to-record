@@ -69,6 +69,51 @@ NOT_ACCEPTED_KEY = "not an accepted key"
 QUOTE_NOT_IN_NOTE = "the quoted words are not in the note"
 
 
+def _object_schema(properties: dict) -> dict:
+    """A JSON object with exactly these keys, all of them present."""
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
+
+
+_KIND_SCHEMA = {"type": "string", "enum": list(KINDS)}
+_FIELD_SCHEMA = {
+    "anyOf": [
+        {"type": "null"},
+        _object_schema({"value": {"type": "string"}, "quote": {"type": "string"}, "kind": _KIND_SCHEMA}),
+    ]
+}
+
+# The shape of the model's answer, in JSON Schema. It is sent with the request
+# so a real provider can make the API enforce it. It mirrors the keys that
+# check_model_output reads (tests/test_extraction.py checks the two agree).
+# It is a convenience, not a safeguard: check_model_output still checks
+# everything, because the answer is untrusted whatever shape it has.
+OUTPUT_SCHEMA = _object_schema(
+    {
+        **{
+            section: _object_schema({name: _FIELD_SCHEMA for name in names})
+            for section, names in SECTIONS.items()
+        },
+        "items": {
+            "type": "array",
+            "items": _object_schema(
+                {
+                    "product_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                    "quantity": {"type": "integer"},
+                    "quote": {"type": "string"},
+                    "kind": _KIND_SCHEMA,
+                }
+            ),
+        },
+        "commitments": {"type": "array", "items": _object_schema({"quote": {"type": "string"}})},
+    }
+)
+
+
 class ExtractionFailed(Exception):
     """No candidates could be produced (unusable answer, or the model call failed)."""
 
@@ -189,7 +234,10 @@ def _check_field(note: str, name: str, raw: object, dropped: list[Dropped]) -> F
     reasons = []
     if appears_again:
         reasons.append(REPEATED)
-    if value != quote:
+    # The value must be copied from the quote: the quote itself or a part of
+    # it ("Friday" from "Call her Friday"). Since the quote is in the note,
+    # such a value is in the note too. Anything else was reworded by the model.
+    if value not in quote:
         reasons.append(REWORDED)
     return Field(name, value, kind, span, "low" if reasons else "high", tuple(reasons))
 
@@ -342,7 +390,8 @@ FIELD is null when the note does not say it. Otherwise it is
 Rules:
 - "quote" is the exact words from the note that the value comes from, copied
   character for character. Never write a quote that is not in the note.
-- "value" is the same words as the quote wherever possible.
+- "value" is copied from the quote: the whole quote or the part of it that
+  answers the field. Do not reword it.
 - When the note does not say something, use null. Do not fill gaps from general
   knowledge or from what is likely.
 - "kind" is "customer_stated" (the customer said it), "observed" (the
@@ -362,13 +411,13 @@ Rules:
 
 def build_request(note: str, products: Mapping[str, str]) -> ModelRequest:
     """Build what is sent to the model: the instructions, the product ids and
-    names (never prices), and the note."""
+    names (never prices), the note, and the shape the answer must have."""
     product_lines = "\n".join(f"{product_id}: {name}" for product_id, name in sorted(products.items()))
     system = f"{_INSTRUCTIONS}\nProducts (id: name):\n{product_lines}\n"
     # The tags only help the model see where the note starts and ends. They are
     # not a security measure: check_model_output is what limits the result.
     user = f"<note>\n{note}\n</note>"
-    return ModelRequest(system=system, user=user)
+    return ModelRequest(system=system, user=user, json_schema=OUTPUT_SCHEMA)
 
 
 def extract(

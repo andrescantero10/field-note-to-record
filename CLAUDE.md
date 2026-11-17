@@ -60,6 +60,8 @@ holds real company details: never commit it or copy from it into a tracked file.
   Edition org via REST (OAuth refresh token, upsert endpoints). Never write to the
   distributor's production org: creating quotes or deals there triggers automations
   (including a copy to the accounting system). Its details stay out of this repo.
+- The developer's API key is in `.env` (gitignored). Never read, print or log that
+  file's contents, and never ask for the key in chat. Tests never call a real API.
 - Stack: Python 3.11+, FastAPI, SQLite, pytest, Hypothesis, a simple mobile-first page.
   Keep dependencies few; add one only in the task that first needs it.
 - Money is `Decimal`, never float.
@@ -75,7 +77,9 @@ holds real company details: never commit it or copy from it into a tracked file.
 | `src/fieldnote/policy_table.py` | The developer's policy table |
 | `src/fieldnote/catalog.py` | Catalog loader, `current_price()`, hard stops |
 | `src/fieldnote/pricing.py` | Pricing engine (only producer of figures) |
-| `src/fieldnote/llm.py` | Model adapter: the only module that may talk to a model; fake provider |
+| `src/fieldnote/llm.py` | Model adapter: the only module that may talk to a model; fake and Claude providers |
+| `src/fieldnote/config.py` | Reads `.env` and environment variables into settings (values are secrets) |
+| `scripts/try_extraction.py` | Manual check: run one extraction and print the result |
 | `src/fieldnote/extraction.py` | Note to checked candidates: spans computed by code, whitelist of keys, no prices |
 | `src/fieldnote/candidates.py` | Candidate store: notes, suggestions, confirm/reject/edit, one-by-one rule, lock |
 | `tests/test_boundaries.py` | Fails if any other module imports a model SDK or network library |

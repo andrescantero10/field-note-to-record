@@ -42,13 +42,16 @@ Week 1 is done and pushed to `origin/main`. Check with `git log --oneline` and
 
 - Task 8 is built: `candidates.py` (see "As built" under Task 8 in section 7).
 
-Expect 287 passed. The real provider is Task 6b and has not been built. The
-developer's choice is Claude and he has an API key, which he will put in `.env`
-himself: never ask him to paste it into the chat. The next tasks are 6b, then 9
-(review page) and 12 (injection tests).
+- Task 6b is built: `ClaudeProvider` in `llm.py`, `config.py`, and
+  `scripts/try_extraction.py` (see "As built" under Task 6 in section 7).
 
-Not built yet: Task 6b, Task 9 and everything after it (section 7). There is no
-web app, no real model call and no Zoho call anywhere in the code.
+Expect 320 passed. The developer keeps his API key in `.env` (gitignored) under
+`ANTHROPIC_API_KEY`: never ask him to paste it into the chat, and never print or
+read that file's contents. The next tasks are 9 (review page) and 12 (injection
+tests).
+
+Not built yet: Task 9 and everything after it (section 7). There is no web app
+and no Zoho call anywhere in the code.
 
 Runtime dependencies: none. Dev dependencies: `pytest`, `hypothesis`.
 
@@ -213,6 +216,29 @@ The only module that talks to a model.
   Zoho; `validation.py` may not import `pricing` or `catalog`; nothing imports
   `crm` except the one write service.
 
+**Task 6b as built (2026-11-16).**
+
+- `ClaudeProvider(api_key, model, *, client=None)` uses the official `anthropic`
+  SDK (pinned `>=2.9,<3`; built on `httpx2`). One call:
+  `client.beta.messages.create(model, max_tokens=16000, system, messages,
+  output_config={"effort": "low", "format": {json_schema}}, betas=[fallback beta],
+  fallbacks="default")`. No tools are ever passed.
+- `ModelRequest` gained an optional `json_schema`. Extraction passes
+  `OUTPUT_SCHEMA`, so the API returns bare JSON of that shape (structured
+  outputs). The checker is unchanged and still treats the answer as untrusted.
+- Default model `claude-opus-5-5`; `LLM_MODEL` in `.env` overrides it. Thinking
+  cannot be disabled on that model; depth is set with `effort` only. If the
+  developer switches to a Haiku model, re-read the `claude-api` skill first: the
+  fallback setting and effort defaults differ by model.
+- Every SDK exception and every unusable reply (refusal, cut off, no text)
+  becomes `ModelError` with wording written in `llm.py`, never the SDK's text.
+- Tests use a stand-in client (`StubClient` in `tests/test_llm.py`), so the suite
+  needs no key and no network. Never add a test that calls the real API.
+- `config.load_settings()` merges `.env` with real environment variables (the
+  environment wins). It is the only place that reads the environment.
+- Before changing anything in `ClaudeProvider`, load the `claude-api` skill and
+  check the current API. Do not write model names or parameters from memory.
+
 #### Task 7: extraction with source spans (`extraction.py`)
 
 Turns a note into candidate fields. This is the riskiest module: get the rules
@@ -292,7 +318,8 @@ specifics that later tasks depend on:
   already encode "commitment or low confidence". Task 8 should use them for the
   bulk-confirm rule instead of re-deriving it.
 - `confidence` is `low` with one or more `reasons` when: the quote appears more
-  than once; the value is not exactly the quote; no product matched; the product
+  than once; the value does not appear inside its quote (a part of the quote is
+  fine: "Friday" from "Call her Friday"); no product matched; the product
   was matched by the model without the id or exact name being in the quote; or
   the quantity is not written as a standalone number in the quote. In practice
   **almost every item is low confidence**, because people rarely say catalog
