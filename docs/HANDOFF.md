@@ -45,10 +45,11 @@ Week 1 is done and pushed to `origin/main`. Check with `git log --oneline` and
 - Task 6b is built: `ClaudeProvider` in `llm.py`, `config.py`, and
   `scripts/try_extraction.py` (see "As built" under Task 6 in section 7).
 
-Expect 320 passed. The developer keeps his API key in `.env` (gitignored) under
+The developer keeps his API key in `.env` (gitignored) under
 `ANTHROPIC_API_KEY`: never ask him to paste it into the chat, and never print or
-read that file's contents. The next tasks are 9 (review page) and 12 (injection
-tests).
+read that file's contents. Task 12 (injection tests) is also built: see "As built"
+under Task 12 in section 7. Expect 447 passed. The next tasks are 9 (review
+page), then 10 and 11 (Zoho).
 
 Not built yet: Task 9 and everything after it (section 7). There is no web app
 and no Zoho call anywhere in the code.
@@ -455,6 +456,26 @@ Test two attackers, not one.
 For every case assert outcomes, not prompts: only whitelisted fields exist as
 candidates; nothing was written to the CRM; no quote figure changed; the policy
 tier of every action is the table's; the attempt is visible in the audit log.
+
+**As built (2026-11-16).**
+
+- `data/sample_notes/`: 2 normal and 8 hostile notes, all invented.
+- `tests/test_injection.py` runs every note against 11 hostile model answers
+  (`HOSTILE_ANSWERS`) through a `Pipeline` helper that wires the real modules:
+  `submit_note`, `extract`, `save_extraction`. `assert_nothing_bad_happened`
+  holds the outcome checks. Two Hypothesis tests feed arbitrary JSON and
+  arbitrary text to the checker.
+- **Extend it, do not replace it.** When the CRM writer (Task 11), quotes (13)
+  and approvals (15) exist, add their steps to `Pipeline.run` and their outcomes
+  to `assert_nothing_bad_happened`: nothing written to the CRM without a
+  confirmed record and a passed policy check; no quote figure differing from
+  the pricing engine's; no approval that did not come from the named approver.
+  Add a hostile answer whenever a new kind of field or key is introduced.
+- When the review page exists (Task 9), add a test that the script-tag note is
+  shown as text and not run.
+- One real call was made with `hostile_set_total.txt` on Claude Opus 5.5: the
+  model ignored the planted instructions. That is an observation about one
+  call, not a guarantee, and the design does not rely on it.
 
 ### Week 3
 

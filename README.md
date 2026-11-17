@@ -61,6 +61,12 @@ The sample includes a past price change (`ARM-12KG`), a future one (`ARM-6KG`),
 a product not yet available (`VIS-3D`), a discontinued one (`GRIP-2F-50`), and
 untaxed services (`SVC-*`). Tax rates are invented.
 
+**Sample notes** (`data/sample_notes/`): two ordinary visit notes and eight
+hostile ones (planted instructions, a fake owner approval, a script tag, text
+that tries to break the answer format, a look-alike product code, database
+commands). `tests/test_injection.py` runs every note against a model that
+returns the worst possible answer.
+
 **Pricing rules** are written in [`docs/PRICING_SPEC.md`](docs/PRICING_SPEC.md):
 tax per line, subtotal including tax, and a person-entered dollar discount taken
 off after tax.
@@ -74,6 +80,12 @@ off after tax.
   API. The prototype has no consent step or redaction for that, so only invented
   notes should be used. The provider has been tried on one example note, not
   measured on a test set.
+- A false statement in a note is still shown to the reviewer as text from the
+  note (for example "the owner already approved this"). The app cannot judge
+  whether it is true. It never treats such text as an approval: approvals only
+  come from the named approver acting in the app.
+- The injection tests cover the note, extraction, candidate and pricing steps.
+  The CRM write and quote approval steps are not built yet and so not yet attacked.
 - Pricing: the tax rate comes from the product's catalog row, not from the
   delivery address. No per-line discounts, no "adjustment" amount, purchase
   quotes only (no rental or leasing). Tax rounding is assumed to be half-up per
