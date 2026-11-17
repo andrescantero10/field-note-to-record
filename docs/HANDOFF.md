@@ -40,10 +40,14 @@ Week 1 is done and pushed to `origin/main`. Check with `git log --oneline` and
 - Task 7 is built: `extraction.py` (see "As built" under Task 7 in section 7),
   `Catalog.product_names()`, and `ActionRefused` in `policy.py`.
 
-Expect 230 passed. The real provider is Task 6b and has not been built; the
-developer's planned choice is Claude. The next tasks are 6b and 8.
+- Task 8 is built: `candidates.py` (see "As built" under Task 8 in section 7).
 
-Not built yet: Task 6b, Task 8 and everything after it (section 7). There is no
+Expect 287 passed. The real provider is Task 6b and has not been built. The
+developer's choice is Claude and he has an API key, which he will put in `.env`
+himself: never ask him to paste it into the chat. The next tasks are 6b, then 9
+(review page) and 12 (injection tests).
+
+Not built yet: Task 6b, Task 9 and everything after it (section 7). There is no
 web app, no real model call and no Zoho call anywhere in the code.
 
 Runtime dependencies: none. Dev dependencies: `pytest`, `hypothesis`.
@@ -323,6 +327,41 @@ SQLite, same file as the audit log (`DATABASE_PATH`), separate tables.
   (`candidate.edit`, `candidate.reject`, `candidate.confirm`) and is therefore
   logged.
 
+**As built (2026-11-16).** It differs from the sketch above in a few ways:
+
+- Tables: `notes`, `note_locks` and one `candidates` table. A candidate is one
+  reviewable thing with `type` `field`, `item` or `commitment`. There is no
+  separate "record" level; the writer (Task 11) groups by `name` prefix
+  (`account.`, `contact.`, `task.`) and by `type`.
+- `CandidateStore(db_path, *, policy, audit, product_names, clock)`. Methods:
+  `submit_note`, `get_note`, `save_extraction` (once per note), `candidates`,
+  `get`, `confirm`, `reject`, `confirm_all`, `edit_value`, `edit_item`, `lock_note`.
+- States: `not_stated`, `pending`, `confirmed`, `rejected`.
+- **Two decisions the developer made** (do not change without asking him):
+  - An edit does **not** confirm. It sets the candidate back to `pending`, and an
+    edited candidate must be confirmed with its own tap, never by `confirm_all`.
+  - `confirm_all` confirms the plain pending ones and returns the rest in
+    `BulkResult.waiting`; it does not refuse.
+- `Candidate.needs_individual_confirmation` is true when it was edited, is a
+  commitment, or was low confidence. The page should show these differently.
+- A `not_stated` field can be filled in with `edit_value` (it becomes `pending`,
+  `edited`, kind `observed`). It cannot be confirmed or rejected while empty.
+- An item with no product cannot be confirmed until `edit_item` picks one.
+- The reviewer can switch between confirmed and rejected until `lock_note`.
+  After the lock every change raises `NoteLocked`. The writer must call
+  `lock_note` after a successful CRM write.
+- The AI's original suggestion is kept in `original_*` and `original_span` and
+  is protected by a trigger. `Candidate.span` is `None` once edited.
+- Audit: `submit_note` logs `allowed` then `succeeded` (with the note id).
+  `confirm`, `reject` and edits log one entry each, the policy check's own, with
+  the candidate id and, for edits, the old and new value. `lock_note` writes no
+  audit entry; the writer's `crm.upsert` entries cover it.
+- A repeat tap (confirming something already confirmed) changes nothing and
+  writes no new audit entry.
+- Any actor may confirm, reject or edit (those actions are green). Whether only
+  the note's author should be allowed is an open question for the developer
+  (section 10).
+
 #### Task 9: review page (FastAPI and one HTML page)
 
 Add `fastapi`, `uvicorn` and `httpx` (needed by the test client) in this task.
@@ -502,6 +541,7 @@ Ask each one when its task starts, with the recommendation, not before.
 |---|---|---|
 | Task 6 | Which model provider for the real adapter? | His choice. Keep the fake as default either way. |
 | Task 9 | How does the page know who is acting? | A simple choice between the two fixed users, listed as a limitation. |
+| Task 9 | May someone other than the note's author confirm, reject or edit its candidates? | No: only the author reviews his own note. The store currently allows anyone. |
 | Task 10 | Has the free Zoho Developer Edition org been created? | Needed before live mode. The mock covers everything until then. |
 | Task 10 | How do a deal's products reach Zoho? | Start with account, contact, deal and task only; keep line items in the app. Revisit after the dev org exists. |
 | Task 10 | Add a `catalog.sync` action (pull products from Zoho)? | Optional. If yes, he picks its color; yellow for the owner is the suggestion. |
