@@ -19,10 +19,11 @@ sections 6 and 7 here or any pricing or catalog code.
 
 ---
 
-## 1. State on 2026-11-16
+## 1. State at the end of 2026-11-16
 
-Week 1 is done and pushed to `origin/main`. Check with `git log --oneline` and
-`.venv/bin/pytest -q` (expect 129 passed) before trusting this section.
+Everything below is committed and pushed to `origin/main`. Check with
+`git log --oneline` and `.venv/bin/pytest -q` (expect **447 passed**) before
+trusting this section.
 
 | Commit | What |
 |---|---|
@@ -30,31 +31,50 @@ Week 1 is done and pushed to `origin/main`. Check with `git log --oneline` and
 | `744943b` | `audit.py`: append-only log (SQLite triggers + SHA-256 hash chain) |
 | `2bfbbd8` | `policy.py` + `policy_table.py`: green/yellow/red lookup, self-approval refused |
 | `f3d9a41` | `catalog.py` + `data/catalog.csv`: dated price rows, hard stops |
-| `bcfc119` | `pricing.py`: first engine (pre-tax, percent discount) |
-| `74c54e6` | `CLAUDE.md` |
-| `ada236e` | Pricing reworked: per-line tax, dollar discount after tax; `docs/PRICING_SPEC.md` |
+| `bcfc119`, `ada236e` | `pricing.py`: per-line tax, dollar discount after tax; `docs/PRICING_SPEC.md` |
+| `74c54e6`, `66d9a5d` | `CLAUDE.md` and this file |
+| `bcb457d` | Task 6: `llm.py` (adapter, `FakeProvider`), `tests/test_boundaries.py` |
+| `8d379fa` | Task 7: `extraction.py`, `Catalog.product_names()`, `ActionRefused` |
+| `070cf7f` | Task 8: `candidates.py` (candidate store) |
+| `be1f847` | Task 6b: `ClaudeProvider`, `config.py`, `scripts/try_extraction.py`; word-for-word rule relaxed |
+| `34fa696` | Task 12: `tests/test_injection.py`, `data/sample_notes/` |
 
-**Since this file was written (both on 2026-11-16):**
-- Task 6 is built: `llm.py` with `ModelRequest`, `ModelResponse`, `ModelProvider`,
-  `FakeProvider`, `get_provider`, plus `tests/test_boundaries.py`.
-- Task 7 is built: `extraction.py` (see "As built" under Task 7 in section 7),
-  `Catalog.product_names()`, and `ActionRefused` in `policy.py`.
+Each built task has an "As built" block under its heading in section 7. Read
+the block before touching that module; it lists what later tasks depend on.
 
-- Task 8 is built: `candidates.py` (see "As built" under Task 8 in section 7).
+**What works end to end today:** a note is saved, sent to the fake model or to
+Claude, checked against the note, stored as candidates, and confirmed, rejected
+or edited one at a time, with every step in the audit log. Pricing works on its
+own. Nothing connects a confirmed deal to pricing yet.
 
-- Task 6b is built: `ClaudeProvider` in `llm.py`, `config.py`, and
-  `scripts/try_extraction.py` (see "As built" under Task 6 in section 7).
+**Not built yet:** the review page (Task 9), the Zoho adapter and the write flow
+(10, 11), and all of Week 3 (13 to 18). There is no web app and no Zoho call
+anywhere in the code.
 
-The developer keeps his API key in `.env` (gitignored) under
-`ANTHROPIC_API_KEY`: never ask him to paste it into the chat, and never print or
-read that file's contents. Task 12 (injection tests) is also built: see "As built"
-under Task 12 in section 7. Expect 447 passed. The next tasks are 9 (review
-page), then 10 and 11 (Zoho).
+**Dependencies.** Runtime: `anthropic` (used only in `llm.py`). Dev: `pytest`,
+`hypothesis`. Task 9 adds `fastapi`, `uvicorn` and `httpx`.
 
-Not built yet: Task 9 and everything after it (section 7). There is no web app
-and no Zoho call anywhere in the code.
+**The developer's `.env`** exists, is gitignored, holds his API key under
+`ANTHROPIC_API_KEY`, and is set to `LLM_PROVIDER=claude`. Never read, print or
+log that file, and never ask for the key in chat. Because of that setting,
+anything that builds its provider from `load_settings()` makes real, paid calls:
+`scripts/try_extraction.py` does today, and the web app will. Tests must always
+construct `FakeProvider` (or a stub client) directly and never go through
+`load_settings()`.
 
-Runtime dependencies: none. Dev dependencies: `pytest`, `hypothesis`.
+### Start here next
+
+**Task 9, the review page, split in two:**
+- **9a, the API.** FastAPI routes over `CandidateStore` and `extract`: submit a
+  note, list its candidates, confirm, reject, edit a value, edit an item,
+  confirm all. Fully tested with `TestClient`, the fake provider and a temporary
+  database. No HTML yet.
+- **9b, the page.** One static, mobile-first HTML file with plain JavaScript
+  that calls 9a. Add the test that the script-tag sample note is shown as text.
+
+Before writing 9a, put the two Task 9 questions from section 10 to the developer
+(who is acting; may a non-author review a note), each with its recommendation.
+Then follow the usual workflow: short plan, wait for "go".
 
 ## 2. Working with the developer
 
@@ -99,6 +119,13 @@ himself; he changed that in practice). Still wait for the words each time.
   to him, and sent only after he says so. Use his `andres-voice` skill for prose
   that goes out as his.
 - Sign-in approvals, passwords and personal forms are his to do.
+- When a step needs him at the keyboard, do everything around it first and leave
+  him the one thing only he can do. For the API key, three written steps got
+  "how do i do that?"; creating the file, setting the provider and opening it in
+  TextEdit, so that he only had to paste and save, worked at once.
+- He does push back when he disagrees: he rejected "an edit counts as
+  confirming" and asked for a second tap. Offer a recommendation, then build
+  what he chooses and record it under "Changed or rejected by developer".
 - Prefer the standard library and simple code over clever code. A reader who has
   taken one Python course should be able to follow every function. Comment the
   why, not the what.
@@ -150,6 +177,16 @@ cp $SCR/$(basename $F).bak $F && diff -q $F $SCR/$(basename $F).bak && .venv/bin
 Always finish with the `diff -q` and a full test run, and say so. Report the
 result as a table: what was broken, which tests failed.
 
+Two lessons from using it:
+- If a break makes many tests fail, the `grep` above can match the word "failed"
+  inside assertion text and push the summary line out of view. When a break
+  shows no summary line, rerun that one break with `| tail -1` and report the
+  real count. Never report a break as caught without seeing its count.
+- Break the module under test, not the test. For security tests
+  (`test_injection.py`), break the real rule in `extraction.py`,
+  `candidates.py`, `catalog.py` or `policy.py` and confirm the injection tests
+  notice.
+
 ## 5. Environment notes
 
 - Run tools as `.venv/bin/pytest` and `.venv/bin/python`. The venv was made with
@@ -159,6 +196,13 @@ result as a table: what was broken, which tests failed.
   `|| echo "all clear"` you get a false all-clear. This happened once with the
   privacy scan. Check exit codes instead of trusting a fallback message.
 - macOS `sed` is BSD: `sed -i ''`. Prefer a short Python replace for edits.
+- A `cd` in one shell command carries over to the next. Start every command with
+  `cd` to the repo root, or use absolute paths.
+- **Fake answers written by hand are not how a real model answers.** The first
+  real call showed the checker flagging values copied from inside their quote,
+  which no hand-written test answer had done. After building anything that
+  reads model output, try it on a real note with `scripts/try_extraction.py`
+  (a paid call: ask the developer first), then turn what you see into a test.
 - `gh` is installed and signed in. The remote is `origin` over HTTPS.
 - **Privacy scan before every commit.** The repo is public. Run the scan command
   from `private/CRM_NOTES.md` over tracked and untracked files and confirm exit
@@ -595,3 +639,5 @@ Ask each one when its task starts, with the recommendation, not before.
 | Task 10 | Add a `catalog.sync` action (pull products from Zoho)? | Optional. If yes, he picks its color; yellow for the owner is the suggestion. |
 | Task 7 | A robot is usually sold with add-ons (warranty, shipping). Should extraction suggest them? | No. Extract only what was said. Suggesting add-ons is a later feature and would look like guessing. |
 | Any | The docs placeholders in section 9. | His words, before final submission. |
+| Any | `docs/AI_ASSISTANCE.md` (Task 4 entry) names the person who asked about MCPs by first name. Keep or reword? | Reword to a role ("a stakeholder"). See `private/CRM_NOTES.md`. |
+| Any | Which model for extraction in the demo? Opus 5.5 is the default (a few cents per note). | Keep the default unless cost matters; it is one line in `.env`. |
