@@ -76,6 +76,7 @@ holds real company details: never commit it or copy from it into a tracked file.
 | `src/fieldnote/catalog.py` | Catalog loader, `current_price()`, hard stops |
 | `src/fieldnote/pricing.py` | Pricing engine (only producer of figures) |
 | `src/fieldnote/llm.py` | Model adapter: the only module that may talk to a model; fake provider |
+| `src/fieldnote/extraction.py` | Note to checked candidates: spans computed by code, whitelist of keys, no prices |
 | `tests/test_boundaries.py` | Fails if any other module imports a model SDK or network library |
 | `docs/PRICING_SPEC.md` | Pricing rules: line tax, totals, dollar discount, hard stops |
 | `data/catalog.csv` | Synthetic catalog: one row per dated price entry, with tax rate |

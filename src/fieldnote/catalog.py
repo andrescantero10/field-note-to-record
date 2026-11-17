@@ -144,6 +144,14 @@ class Catalog:
             entries = [_parse_row(row, line) for line, row in enumerate(reader, start=2)]
         return cls(entries)
 
+    def product_names(self) -> dict[str, str]:
+        """Every product id with its name, and nothing else. This is the only
+        catalog information the model is shown: no prices, no tax rates.
+        Discontinued and future products are included, so a note that asks for
+        one is matched and then stopped by current_price() with a clear reason."""
+        # Entries are sorted newest first, so [0] carries the latest name.
+        return {product_id: entries[0].name for product_id, entries in self._by_product.items()}
+
     def current_price(self, product_id: str, on_date: date) -> PriceEntry:
         """Return the entry in force on on_date, or raise NoCurrentPrice."""
         # datetime is a subclass of date; comparing the two raises, so refuse it up front.

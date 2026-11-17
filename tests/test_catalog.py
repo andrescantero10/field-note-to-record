@@ -166,3 +166,17 @@ def test_wrong_columns_are_rejected(tmp_path, header):
 def test_empty_catalog_is_rejected(tmp_path):
     with pytest.raises(CatalogError, match="empty"):
         Catalog.from_csv(write_csv(tmp_path, HEADER))
+
+
+# --- What the model is allowed to see ------------------------------------------
+
+
+def test_product_names_lists_ids_and_names_only(catalog):
+    names = catalog.product_names()
+    assert names["ARM-6KG"] == "Collaborative arm 6-axis 6 kg payload"
+    assert names["SVC-SHIP"] == "Shipping and deployment per robot"
+    # Discontinued and future products are listed too; pricing stops them later.
+    assert {"GRIP-2F-50", "VIS-3D"} <= set(names)
+    assert len(names) == 15
+    assert all(isinstance(name, str) for name in names.values())
+    assert "18450" not in repr(names) and "6.50" not in repr(names)

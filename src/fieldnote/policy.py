@@ -77,6 +77,15 @@ class Decision:
     reason: str
 
 
+class ActionRefused(Exception):
+    """Raised by a module when the policy check said no, so the action stops.
+    The refusal itself is already in the audit log by then."""
+
+    def __init__(self, decision: Decision) -> None:
+        super().__init__(decision.reason)
+        self.decision = decision
+
+
 def validate_table(table: Mapping[str, Rule]) -> None:
     """Fail at startup if the table is malformed, rather than at decision time."""
     for action_type, rule in table.items():

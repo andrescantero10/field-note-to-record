@@ -34,13 +34,17 @@ Week 1 is done and pushed to `origin/main`. Check with `git log --oneline` and
 | `74c54e6` | `CLAUDE.md` |
 | `ada236e` | Pricing reworked: per-line tax, dollar discount after tax; `docs/PRICING_SPEC.md` |
 
-**Since this file was written:** Task 6 is built (2026-11-16): `llm.py` with
-`ModelRequest`, `ModelResponse`, `ModelProvider`, `FakeProvider`, `get_provider`,
-plus `tests/test_boundaries.py`. Expect 162 passed. The real provider is Task 6b
-and has not been built; the developer's planned choice is Claude.
+**Since this file was written (both on 2026-11-16):**
+- Task 6 is built: `llm.py` with `ModelRequest`, `ModelResponse`, `ModelProvider`,
+  `FakeProvider`, `get_provider`, plus `tests/test_boundaries.py`.
+- Task 7 is built: `extraction.py` (see "As built" under Task 7 in section 7),
+  `Catalog.product_names()`, and `ActionRefused` in `policy.py`.
 
-Not built yet: Task 6b and everything after it (section 7). There is no web app,
-no real model call and no Zoho call anywhere in the code.
+Expect 230 passed. The real provider is Task 6b and has not been built; the
+developer's planned choice is Claude. The next tasks are 6b and 8.
+
+Not built yet: Task 6b, Task 8 and everything after it (section 7). There is no
+web app, no real model call and no Zoho call anywhere in the code.
 
 Runtime dependencies: none. Dev dependencies: `pytest`, `hypothesis`.
 
@@ -263,6 +267,42 @@ code and in explanations.
 - no recorded prompt contains a catalog price
 - Hypothesis: for any note and any substring of it used as the quote, the span
   slices back to exactly that quote
+
+**As built (2026-11-16).** The module follows the design above, with these
+specifics that later tasks depend on:
+
+- `check_model_output(note, model_text, products)` is the checker. It is a pure
+  function and is where every rule lives. `extract(note, author, *, provider,
+  catalog, policy, audit)` wraps it: policy check for `extraction.run`, one model
+  call, the checker, then a `succeeded` or `failed` audit entry.
+- Result: `Extraction(fields, items, commitments, dropped)`.
+  - `fields`: one `Field` per name in `FIELD_NAMES` (`account.name`,
+    `contact.name`, `contact.email`, `contact.phone`, `task.subject`, `task.due`).
+    A field the note does not state has `value is None` and `status == "not_stated"`.
+  - `items`: `ItemCandidate(product_id, product_name, quantity, kind, span,
+    confidence, reasons)`. An item has **one quote** covering product and
+    quantity together. `product_id is None` means the reviewer must pick.
+  - `commitments`: `Field` objects named `commitment`, value = the words as said.
+  - `dropped`: what the model returned that was not accepted, and why.
+- `Field.needs_individual_confirmation` and `ItemCandidate.needs_individual_confirmation`
+  already encode "commitment or low confidence". Task 8 should use them for the
+  bulk-confirm rule instead of re-deriving it.
+- `confidence` is `low` with one or more `reasons` when: the quote appears more
+  than once; the value is not exactly the quote; no product matched; the product
+  was matched by the model without the id or exact name being in the quote; or
+  the quantity is not written as a standalone number in the quote. In practice
+  **almost every item is low confidence**, because people rarely say catalog
+  names. That is intended: items drive the quote.
+- A field or item whose `kind` is missing or invalid is dropped, not defaulted.
+- **The answer must be bare JSON.** A code fence or any text around it fails the
+  whole extraction. Task 6b must make the real provider return bare JSON (through
+  the provider's structured-output feature if it has one). Do not loosen the
+  checker to strip fences without asking the developer.
+- Limits: note 5,000 characters, model answer 50,000, 50 items, 20 commitments,
+  quantity up to 100,000.
+- `task.due` is kept as the note's words. The reviewer picks the date (Task 9).
+- The model-failure audit entry uses a fixed reason and never the provider's own
+  error text. Keep that when Task 6b adds real errors.
 
 #### Task 8: candidate store (`candidates.py`)
 
