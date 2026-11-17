@@ -82,6 +82,7 @@ holds real company details: never commit it or copy from it into a tracked file.
 | `scripts/try_extraction.py` | Manual check: run one extraction and print the result |
 | `src/fieldnote/extraction.py` | Note to checked candidates: spans computed by code, whitelist of keys, no prices |
 | `src/fieldnote/candidates.py` | Candidate store: notes, suggestions, confirm/reject/edit, one-by-one rule, author-only rule, lock |
+| `src/fieldnote/crm.py` | CRM adapter: the only module that may talk to Zoho; four actions; mock client (live not built) |
 | `src/fieldnote/api.py` | Web API (FastAPI): routes over the store and extraction; holds no rules of its own |
 | `src/fieldnote/main.py` | Starts the web API from `.env` (`uvicorn --factory fieldnote.main:app`) |
 | `src/fieldnote/static/` | The phone page: `index.html`, `app.js`, `app.css`. Text is shown with `textContent` only |

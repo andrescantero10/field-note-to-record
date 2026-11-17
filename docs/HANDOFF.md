@@ -22,7 +22,7 @@ sections 6 and 7 here or any pricing or catalog code.
 ## 1. State at the end of 2026-11-16
 
 Everything below is committed and pushed to `origin/main`. Check with
-`git log --oneline` and `.venv/bin/pytest -q` (expect **773 passed**) before
+`git log --oneline` and `.venv/bin/pytest -q` (expect **851 passed**) before
 trusting this section.
 
 | Commit | What |
@@ -39,7 +39,8 @@ trusting this section.
 | `be1f847` | Task 6b: `ClaudeProvider`, `config.py`, `scripts/try_extraction.py`; word-for-word rule relaxed |
 | `34fa696` | Task 12: `tests/test_injection.py`, `data/sample_notes/` |
 | `57f8769` | Task 9a: `api.py`, `main.py`, author-only rule in `candidates.py` |
-| "Add phone page" (see `git log`) | Task 9b: `static/` (page), `GET /products`, `tests/test_page.py` |
+| `3fc536f` | Task 9b: `static/` (page), `GET /products`, `tests/test_page.py` |
+| "Add CRM adapter" (see `git log`) | Task 10a: `crm.py` (four actions, `MockCrm`, mode setting) |
 
 Each built task has an "As built" block under its heading in section 7. Read
 the block before touching that module; it lists what later tasks depend on.
@@ -50,7 +51,9 @@ or edited one at a time, with every step in the audit log. All of that can be
 done from the phone page (`static/`), which talks to the web API (`api.py`).
 Pricing works on its own. Nothing connects a confirmed deal to pricing yet.
 
-**Not built yet:** the Zoho adapter and the write flow (10, 11), and all of
+The CRM adapter (`crm.py`) exists with a mock, but nothing calls it yet.
+
+**Not built yet:** the live Zoho client (10b), the write flow (11), and all of
 Week 3 (13 to 18). There is no Zoho call anywhere in the code.
 
 **Dependencies.** Runtime: `anthropic` (used only in `llm.py`), `fastapi`,
@@ -73,10 +76,22 @@ and make a paid call.
 
 ### Start here next
 
-**Task 10, the Zoho adapter (`crm.py`), mock first.** Task 9 (API and phone
-page) is done; see its "As built" blocks in section 7. Before writing Task 10,
-put its three questions from section 10 to the developer, each with its
-recommendation. Then follow the usual workflow: short plan, wait for "go".
+**Task 11, the confirm-and-write flow (`writer.py`).** Task 10a (the CRM
+adapter with its mock) is done; see its "As built" block in section 7. Task 10b
+(the live Zoho client) waits until the developer says he has created the free
+Zoho Developer Edition org; do not start it before that, and read Zoho's
+current API documentation first.
+
+Before writing Task 11, put these to the developer, each with a recommendation:
+- **The task's due date.** The candidate holds the note's words ("Friday"),
+  and `crm.Task.due_date` is a real date or nothing. Nobody built a date
+  picker in Task 9. Recommendation: send no due date and put the words in the
+  task's subject ("Call her (due: Friday)"), and list it as a limitation.
+- **What a deal is called.** Recommendation: account name plus the note's date.
+- **Which confirmed fields are required before writing.** Recommendation: the
+  account name and the contact name; refuse with a clear message otherwise.
+
+Then follow the usual workflow: short plan, wait for "go".
 
 To look at the page without paid calls, run the server with the fake model
 (every field comes back "not stated"):
@@ -539,6 +554,36 @@ Add `fastapi`, `uvicorn` and `httpx` (needed by the test client) in this task.
   See `private/CRM_NOTES.md` for which modules have a unique field and which do not.
 - The app does not create quote records in Zoho.
 
+**As built, 10a (adapter and mock), 2026-11-16.** `src/fieldnote/crm.py`,
+`tests/test_crm.py`.
+- Records: frozen dataclasses `Account(name)`, `Contact(name, email, phone,
+  account_id)`, `Deal(name, account_id, contact_id)`, `Task(subject, due_date,
+  deal_id, contact_id)`. No money field; a test fails if one is added.
+- `CrmClient` (a `Protocol`): `save_account`, `save_contact`, `save_deal`
+  (each takes `existing_id=None` and returns the record id) and `create_task`.
+  Exactly four; a test fails on a fifth. Errors are `CrmError`.
+- `MockCrm(db_path)`: table `mock_crm_records` in the app's database. Ids look
+  like `mock-12`. Same email (any letter case) is the same contact; accounts
+  and deals saved twice without an id become two records, on purpose. Links
+  must point at a real record of the right kind. `fail_next = N` makes the
+  next N actions raise; `calls` lists the actions attempted; `records(module)`
+  and `get(id)` read what it holds.
+- **So the duplicate protection is Task 11's job:** the `crm_links` table
+  described above was not built here. The writer must store each returned id
+  and pass it back as `existing_id`. A task has no update action, so a linked
+  task is simply not created again.
+- `crm_mode(env)` / `get_crm(env, db_path)`: `ZOHO_MODE` missing or `mock`
+  gives the mock; `live` raises `NotImplementedError`; anything else raises
+  `ValueError`. `main.build_app` calls `crm_mode` so the app refuses to start
+  in a mode it cannot run.
+- `tests/test_boundaries.py`: `CRM_USERS = {"main.py"}` lists who may import
+  `crm`. Task 11 adds `writer.py`. Never add `api.py`. `crm.py` itself imports
+  no other project module; 10b adds `httpx2` to its allowed imports.
+- Decided by the developer: only account, contact, deal and task go to Zoho
+  (a deal's products stay in the app); no catalog sync for now.
+- Case-insensitive email matching and "links must exist" are assumptions about
+  the real CRM. Check both against the Developer Edition org in 10b.
+
 #### Task 11: confirm-and-write flow (`writer.py`)
 
 The one function that may call `crm`.
@@ -707,9 +752,10 @@ Ask each one when its task starts, with the recommendation, not before.
 | When | Question | Recommendation |
 |---|---|---|
 | Task 6 | Which model provider for the real adapter? | His choice. Keep the fake as default either way. |
-| Task 10 | Has the free Zoho Developer Edition org been created? | Needed before live mode. The mock covers everything until then. |
-| Task 10 | How do a deal's products reach Zoho? | Start with account, contact, deal and task only; keep line items in the app. Revisit after the dev org exists. |
-| Task 10 | Add a `catalog.sync` action (pull products from Zoho)? | Optional. If yes, he picks its color; yellow for the owner is the suggestion. |
+| Task 10b | Has the free Zoho Developer Edition org been created? | Needed before live mode. The mock covers everything until then. |
+| Task 10b | How do a deal's products reach Zoho? | Decided for now (2026-11-16): they do not; line items stay in the app. Revisit once the dev org exists. |
+| Later | Add a `catalog.sync` action (pull products from Zoho)? | Decided for now (2026-11-16): no. If added later, he picks its color; yellow for the owner is the suggestion. |
+| Task 11 | Task due date, deal name, required fields before a write. | See "Start here next" in section 1. |
 | Task 7 | A robot is usually sold with add-ons (warranty, shipping). Should extraction suggest them? | No. Extract only what was said. Suggesting add-ons is a later feature and would look like guessing. |
 | Any | The docs placeholders in section 9. | His words, before final submission. |
 | Any | `docs/AI_ASSISTANCE.md` (Task 4 entry) names the person who asked about MCPs by first name. Keep or reword? | Reword to a role ("a stakeholder"). See `private/CRM_NOTES.md`. |

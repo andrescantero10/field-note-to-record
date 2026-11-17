@@ -92,6 +92,9 @@ off after tax.
 
 ## Known limitations
 
+- CRM: only a mock exists so far, a pretend CRM kept in the local database.
+  Nothing writes to it yet, and the live Zoho client is not built. With
+  `ZOHO_MODE=live` the app refuses to start.
 - Dictation: the Dictate button uses the browser's own speech recognition, and
   the browser may send the audio to its maker to turn it into text. It is shown
   only where the browser supports it. Browsers allow it only on a secure

@@ -84,3 +84,73 @@ def test_only_the_model_adapter_may_reach_a_model_or_the_network(path):
 def test_both_http_libraries_are_restricted():
     # The model SDK is built on httpx2, so it must be on the list as well.
     assert {"httpx", "httpx2"} <= RESTRICTED
+
+
+# --- Who may use the CRM adapter ---------------------------------------------------
+# Hard rule: only one module talks to Zoho, and only after the policy check.
+# crm.py is that module. It checks no policy itself, so the modules allowed to
+# import it are listed here. Task 11 adds the writer, which checks the policy
+# before every call. The web API is not on the list and must never be.
+
+CRM_USERS = {"main.py"}
+
+
+def imported_own_modules(source: str) -> set[str]:
+    """Names of this project's own modules that a piece of source imports,
+    for example {"crm", "audit"}."""
+    names = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                parts = alias.name.split(".")
+                if parts[0] == "fieldnote" and len(parts) > 1:
+                    names.add(parts[1])
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if node.level > 0:  # from . import x / from .x import y
+                parts = module.split(".") if module else []
+            elif module == "fieldnote" or module.startswith("fieldnote."):
+                parts = module.split(".")[1:]
+            else:
+                continue
+            if parts:
+                names.add(parts[0])
+            else:
+                names.update(alias.name for alias in node.names)
+    return names
+
+
+def test_own_module_scanner_sees_every_way_of_importing():
+    source = """
+import fieldnote.crm
+import fieldnote.audit as log
+from fieldnote.policy import PolicyEngine
+from fieldnote import catalog, pricing
+from . import llm
+from .extraction import extract
+import os
+from somewhere.crm import Thing
+"""
+    assert imported_own_modules(source) == {
+        "crm", "audit", "policy", "catalog", "pricing", "llm", "extraction",
+    }
+
+
+@pytest.mark.parametrize(
+    "path", SOURCE_FILES, ids=lambda p: p.relative_to(SRC).as_posix()
+)
+def test_only_listed_modules_may_use_the_crm_adapter(path):
+    relative = path.relative_to(SRC).as_posix()
+    uses_crm = "crm" in imported_own_modules(path.read_text(encoding="utf-8"))
+    if relative == "crm.py":
+        return
+    assert not uses_crm or relative in CRM_USERS, f"{relative} imports the CRM adapter"
+
+
+def test_the_crm_adapter_stands_alone():
+    # It uses none of the project's other modules: no policy, no model, no
+    # prices, no candidates. And until the live client is built, no network.
+    source = (SRC / "crm.py").read_text(encoding="utf-8")
+    assert imported_own_modules(source) == set()
+    assert imported_modules(source) & RESTRICTED == set()
+    assert "api.py" not in CRM_USERS
