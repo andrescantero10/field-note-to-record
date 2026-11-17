@@ -15,6 +15,8 @@ Rules enforced here, so no other part of the app can skip them:
   confirmed one at a time. confirm_all() never confirms them.
 - An edit does not confirm. It puts the candidate back to pending, and the
   reviewer confirms it as a second step.
+- Only the person who wrote a note may confirm, reject or edit what was
+  extracted from it. Anyone else is refused, and the refusal is logged.
 - Every confirm, reject and edit passes the policy check first, which also
   writes it to the audit log.
 - After a note is locked, nothing about it can change.
@@ -105,8 +107,19 @@ _COLUMNS = (
 )
 
 
+NOT_AUTHOR = "only the note's author may review it"
+
+
 class NoteLocked(Exception):
     """The note is locked, so nothing about it can change any more."""
+
+
+class NotAuthor(Exception):
+    """Someone other than the note's author tried to review it."""
+
+
+class NotFound(LookupError):
+    """There is no note or candidate with that id."""
 
 
 @dataclass(frozen=True)
@@ -252,7 +265,7 @@ class CandidateStore:
             (note_id,),
         ).fetchone()
         if row is None:
-            raise LookupError(f"no note with id {note_id}")
+            raise NotFound(f"no note with id {note_id}")
         return Note(row[0], row[1], row[2], row[3], bool(row[4]))
 
     def lock_note(self, note_id: int, actor: str) -> None:
@@ -269,6 +282,26 @@ class CandidateStore:
         note = self.get_note(note_id)
         if note.locked:
             raise NoteLocked(f"note {note_id} is locked")
+        return note
+
+    def _require_author(self, note: Note, actor: str, action_type: str) -> None:
+        """Refuse, and log the refusal, unless actor wrote the note."""
+        if actor != note.author:
+            self._audit.append(
+                actor, action_type, "refused",
+                {"check": "author", "reason": NOT_AUTHOR, "note_id": note.id,
+                 "author": note.author},
+            )
+            raise NotAuthor(NOT_AUTHOR)
+
+    def note_awaiting_extraction(self, note_id: int, actor: str) -> Note:
+        """Return the note if actor may run an extraction on it now: it is not
+        locked, actor wrote it, and it has no candidates yet. Used to try
+        again after the model failed."""
+        note = self._require_unlocked(note_id)
+        self._require_author(note, actor, "extraction.run")
+        if self.candidates(note_id):
+            raise ValueError(f"candidates were already saved for note {note_id}")
         return note
 
     # --- Saving and reading candidates ------------------------------------------
@@ -325,7 +358,7 @@ class CandidateStore:
             f"SELECT {_COLUMNS} FROM candidates WHERE id = ?", (candidate_id,)
         ).fetchone()
         if row is None:
-            raise LookupError(f"no candidate with id {candidate_id}")
+            raise NotFound(f"no candidate with id {candidate_id}")
         return _to_candidate(row)
 
     # --- The reviewer's decisions --------------------------------------------------
@@ -349,6 +382,7 @@ class CandidateStore:
 
     def _confirm(self, candidate: Candidate, actor: str, bulk: bool) -> Candidate:
         note = self._require_unlocked(candidate.note_id)
+        self._require_author(note, actor, "candidate.confirm")
         if candidate.state == "not_stated":
             raise ValueError("there is nothing to confirm: the note does not state this")
         if candidate.type == "item" and candidate.product_id is None:
@@ -366,6 +400,7 @@ class CandidateStore:
         """Reject one candidate."""
         candidate = self.get(candidate_id)
         note = self._require_unlocked(candidate.note_id)
+        self._require_author(note, actor, "candidate.reject")
         if candidate.state == "not_stated":
             raise ValueError("there is nothing to reject: the note does not state this")
         if candidate.state == "rejected":
@@ -377,7 +412,8 @@ class CandidateStore:
         """Confirm every pending candidate that is allowed to be confirmed in
         bulk. Commitments, low-confidence candidates and edited ones are left
         pending and returned in `waiting`."""
-        self._require_unlocked(note_id)
+        note = self._require_unlocked(note_id)
+        self._require_author(note, actor, "candidate.confirm")
         confirmed, waiting = [], []
         for candidate in self.candidates(note_id):
             if candidate.state != "pending":
@@ -407,6 +443,7 @@ class CandidateStore:
         note did not state. The AI's original value is kept beside it."""
         candidate = self.get(candidate_id)
         note = self._require_unlocked(candidate.note_id)
+        self._require_author(note, actor, "candidate.edit")
         if candidate.type == "item":
             raise ValueError("a deal item is edited with edit_item")
         if not isinstance(value, str) or not value.strip():
@@ -427,6 +464,7 @@ class CandidateStore:
         """Change the product, the quantity, or both, of a deal item."""
         candidate = self.get(candidate_id)
         note = self._require_unlocked(candidate.note_id)
+        self._require_author(note, actor, "candidate.edit")
         if candidate.type != "item":
             raise ValueError("only a deal item has a product and a quantity")
         if product_id is None and quantity is None:

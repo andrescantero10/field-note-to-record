@@ -81,7 +81,9 @@ holds real company details: never commit it or copy from it into a tracked file.
 | `src/fieldnote/config.py` | Reads `.env` and environment variables into settings (values are secrets) |
 | `scripts/try_extraction.py` | Manual check: run one extraction and print the result |
 | `src/fieldnote/extraction.py` | Note to checked candidates: spans computed by code, whitelist of keys, no prices |
-| `src/fieldnote/candidates.py` | Candidate store: notes, suggestions, confirm/reject/edit, one-by-one rule, lock |
+| `src/fieldnote/candidates.py` | Candidate store: notes, suggestions, confirm/reject/edit, one-by-one rule, author-only rule, lock |
+| `src/fieldnote/api.py` | Web API (FastAPI): routes over the store and extraction; holds no rules of its own |
+| `src/fieldnote/main.py` | Starts the web API from `.env` (`uvicorn --factory fieldnote.main:app`) |
 | `tests/test_injection.py` | Every sample note against every hostile model answer; extend as modules are added |
 | `data/sample_notes/` | Invented visit notes, normal and hostile |
 | `tests/test_boundaries.py` | Fails if any other module imports a model SDK or network library |

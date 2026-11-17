@@ -22,7 +22,7 @@ sections 6 and 7 here or any pricing or catalog code.
 ## 1. State at the end of 2026-11-16
 
 Everything below is committed and pushed to `origin/main`. Check with
-`git log --oneline` and `.venv/bin/pytest -q` (expect **447 passed**) before
+`git log --oneline` and `.venv/bin/pytest -q` (expect **714 passed**) before
 trusting this section.
 
 | Commit | What |
@@ -38,43 +38,59 @@ trusting this section.
 | `070cf7f` | Task 8: `candidates.py` (candidate store) |
 | `be1f847` | Task 6b: `ClaudeProvider`, `config.py`, `scripts/try_extraction.py`; word-for-word rule relaxed |
 | `34fa696` | Task 12: `tests/test_injection.py`, `data/sample_notes/` |
+| "Add web API" (see `git log`) | Task 9a: `api.py`, `main.py`, author-only rule in `candidates.py` |
 
 Each built task has an "As built" block under its heading in section 7. Read
 the block before touching that module; it lists what later tasks depend on.
 
 **What works end to end today:** a note is saved, sent to the fake model or to
 Claude, checked against the note, stored as candidates, and confirmed, rejected
-or edited one at a time, with every step in the audit log. Pricing works on its
-own. Nothing connects a confirmed deal to pricing yet.
+or edited one at a time, with every step in the audit log. All of that can be
+done over HTTP through the web API (`api.py`). Pricing works on its own. Nothing
+connects a confirmed deal to pricing yet.
 
-**Not built yet:** the review page (Task 9), the Zoho adapter and the write flow
-(10, 11), and all of Week 3 (13 to 18). There is no web app and no Zoho call
+**Not built yet:** the phone page (Task 9b), the Zoho adapter and the write flow
+(10, 11), and all of Week 3 (13 to 18). There is no HTML and no Zoho call
 anywhere in the code.
 
-**Dependencies.** Runtime: `anthropic` (used only in `llm.py`). Dev: `pytest`,
-`hypothesis`. Task 9 adds `fastapi`, `uvicorn` and `httpx`.
+**Dependencies.** Runtime: `anthropic` (used only in `llm.py`), `fastapi`,
+`uvicorn`. Dev: `pytest`, `hypothesis`, `httpx2`. FastAPI's test client now
+needs `httpx2`, not `httpx`; `httpx2` is also what the `anthropic` SDK is built
+on. `httpx` is not installed.
 
 **The developer's `.env`** exists, is gitignored, holds his API key under
 `ANTHROPIC_API_KEY`, and is set to `LLM_PROVIDER=claude`. Never read, print or
 log that file, and never ask for the key in chat. Because of that setting,
 anything that builds its provider from `load_settings()` makes real, paid calls:
-`scripts/try_extraction.py` does today, and the web app will. Tests must always
-construct `FakeProvider` (or a stub client) directly and never go through
-`load_settings()`.
+`scripts/try_extraction.py` does, and so does the web app when started with
+`uvicorn --factory fieldnote.main:app`. To run the server without paid calls,
+override the setting on the command line:
+`LLM_PROVIDER=fake DATABASE_PATH=<scratch>/try.db .venv/bin/uvicorn --factory fieldnote.main:app`.
+Tests must always construct `FakeProvider` (or a stub client) directly and never
+go through `load_settings()`. **Never run a break-it check that makes
+`main.app()` read `.env` from the working folder**: it would find the real file
+and make a paid call.
 
 ### Start here next
 
-**Task 9, the review page, split in two:**
-- **9a, the API.** FastAPI routes over `CandidateStore` and `extract`: submit a
-  note, list its candidates, confirm, reject, edit a value, edit an item,
-  confirm all. Fully tested with `TestClient`, the fake provider and a temporary
-  database. No HTML yet.
-- **9b, the page.** One static, mobile-first HTML file with plain JavaScript
-  that calls 9a. Add the test that the script-tag sample note is shown as text.
+**Task 9b, the phone page.** 9a (the API) is done; see its "As built" block in
+section 7. What 9b needs:
+- One static, mobile-first HTML file with plain JavaScript, served by the app
+  (a route for `/`). It sends `X-Acting-As` from a simple "acting as" choice.
+- A `GET /products` route that returns product ids and names, never prices, for
+  the item-edit dropdown (`Catalog.product_names()`).
+- **Every new route must be added to `ROUTES` in `tests/test_api.py`.**
+  `test_the_route_list_above_is_complete` fails otherwise. A page route that
+  needs no user goes in `BUILT_IN` instead, with a reason.
+- The script-tag rule: render every piece of text with `textContent`. Test it
+  two ways: a test that reads the page's source and fails on `innerHTML`,
+  `outerHTML`, `insertAdjacentHTML` or `document.write`, and a manual check in
+  a browser with `data/sample_notes/hostile_*` (say so in the summary).
+- With the default fake model every field comes back "not stated". For a demo
+  that shows real suggestions, either use Claude (paid) or add a canned demo
+  answer; ask the developer which.
 
-Before writing 9a, put the two Task 9 questions from section 10 to the developer
-(who is acting; may a non-author review a note), each with its recommendation.
-Then follow the usual workflow: short plan, wait for "go".
+Follow the usual workflow: short plan, wait for "go".
 
 ## 2. Working with the developer
 
@@ -219,7 +235,8 @@ Do not reopen these unless the developer does.
 |---|---|
 | Audit log | Append-only by three layers. Outcomes are exactly `allowed`, `refused`, `succeeded`, `failed`. The log does not validate `action_type`. |
 | Policy table | A Python file, read-only mapping. Red rules name their approver. Only `quote.release_discounted` is red (approver `owner`); `crm.upsert` and `quote.release` are yellow; the rest are green. |
-| Actors | Plain strings for now: `sales_rep`, `owner`, `system`. No authentication exists yet (section 9). |
+| Actors | Plain strings: `sales_rep`, `owner`, `system`. The web API takes the acting user from the `X-Acting-As` header (`sales_rep` or `owner`); no login (section 9). Decided 2026-11-16. |
+| Who reviews a note | Only its author confirms, rejects, edits or re-extracts. Either user may read it. Enforced in the store and logged. Decided 2026-11-16. |
 | Catalog | CSV file in the repo, one row per dated price entry, with `tax_rate`. The app prices from its own copy, never live from Zoho. |
 | Pricing | As in `docs/PRICING_SPEC.md`: tax per line rounded half-up, subtotal includes tax, dollar discount after tax, any discount is red. |
 | Discount source | Typed by a person at quote time. Never taken from the model's reading of a note. |
@@ -452,12 +469,43 @@ Add `fastapi`, `uvicorn` and `httpx` (needed by the test client) in this task.
   "acting as" choice between the two fixed users, documented as a limitation.
 - Tests use FastAPI's `TestClient` with the fake provider and the mock CRM.
 
+**As built, 9a (the API), 2026-11-16.** `src/fieldnote/api.py`,
+`src/fieldnote/main.py`, `tests/test_api.py`.
+- `create_app(*, db_path, provider, catalog, table=POLICY_TABLE)` returns the
+  FastAPI app. `main.build_app(settings, root)` builds it from settings;
+  `main.app()` reads `.env` (uvicorn `--factory`).
+- Routes: `POST /notes` (201; saves the note, then extracts), `GET /notes/{id}`,
+  `POST /notes/{id}/extract` (try again after a failure),
+  `POST /notes/{id}/confirm-all`, `POST /candidates/{id}/confirm`, `/reject`,
+  `/value` (body `{"value"}`), `/item` (body `{"product_id"?, "quantity"?}`).
+- Who is acting: the `X-Acting-As` header, exactly `sales_rep` or `owner`
+  (`api.USERS`), else 401. No login (decided by the developer; a stated limit).
+- **Only the note's author may confirm, reject, edit or re-extract** (decided by
+  the developer). The rule is in the store (`_require_author`), not in the API,
+  and a refusal is written to the audit log with `"check": "author"`. Either
+  user may read a note. Task 15 (owner approves a discounted quote) must not go
+  through these candidate methods.
+- Answers: errors are always `{"detail": "..."}`. 401 unknown user, 403 not the
+  author or refused by policy, 404 `NotFound`, 409 locked, 400 the store's
+  `ValueError` (its message is shown), 422 wrong request form (fixed message,
+  nothing repeated back), 502 `{"detail", "note_id"}` when extraction failed
+  (the note stays saved).
+- Request bodies are strict and refuse unknown keys, so a body cannot carry an
+  author, a state or a price.
+- The API holds no rules. It opens `AuditLog` and `CandidateStore` per request
+  (SQLite connections cannot move between threads) and a lock makes requests
+  take turns, model call included.
+- `tests/test_injection.py` now also runs every note and hostile answer through
+  `POST /notes` (`Pipeline.run_through_api`). Extend that when routes that
+  write to the CRM or build quotes are added.
+
 #### Task 10: Zoho adapter (`crm.py`), mock first
 
 - `CrmClient` protocol: upsert account, upsert contact, upsert deal, create task.
 - `MockCrm` keeps records in SQLite and behaves like the real thing, including
   returning an existing record on a repeat.
-- `ZohoCrm` uses `httpx`: refresh token to access token (kept in memory, never
+- `ZohoCrm` uses `httpx2` (already installed; add it to the runtime
+  dependencies and allow it for `crm.py` in `tests/test_boundaries.py`): refresh token to access token (kept in memory, never
   logged), then the upsert endpoints. **Read Zoho's current API documentation
   before writing it**, and check field API names against the Developer Edition
   org. Do not code request shapes from memory.
@@ -609,9 +657,16 @@ Paste this as the first message of a new session opened in this folder:
 Things a reviewer could raise. None is urgent; each should be either fixed or
 listed in the README's limitations by the end.
 
-- **No authentication.** Actor names are strings supplied by the caller. The
-  policy engine checks who approved, but nothing proves who is asking. Whatever
-  the review page does about identity is a prototype measure and must be stated.
+- **No authentication.** The acting user is whatever the `X-Acting-As` header
+  says. The policy engine and the author rule check that name, but nothing
+  proves who is asking. Stated in the README.
+- **Any `ValueError` becomes a 400** in the API, with its message. The store's
+  messages are our own words, but a bug that raises `ValueError` elsewhere
+  would also be reported as a 400 instead of a 500.
+- **One request at a time.** A slow model call makes every other request wait.
+  Fine for two users; stated in the README.
+- **A note whose extraction keeps failing stays saved with no candidates.**
+  It can be retried, but never removed (notes are immutable).
 - **Audit truncation.** Removing the newest entries leaves a valid shorter chain.
 - **`Catalog(entries)` trusts its input.** Only `Catalog.from_csv` validates
   rows. Tests build `PriceEntry` objects directly on purpose. Any future code
@@ -632,8 +687,6 @@ Ask each one when its task starts, with the recommendation, not before.
 | When | Question | Recommendation |
 |---|---|---|
 | Task 6 | Which model provider for the real adapter? | His choice. Keep the fake as default either way. |
-| Task 9 | How does the page know who is acting? | A simple choice between the two fixed users, listed as a limitation. |
-| Task 9 | May someone other than the note's author confirm, reject or edit its candidates? | No: only the author reviews his own note. The store currently allows anyone. |
 | Task 10 | Has the free Zoho Developer Edition org been created? | Needed before live mode. The mock covers everything until then. |
 | Task 10 | How do a deal's products reach Zoho? | Start with account, contact, deal and task only; keep line items in the app. Revisit after the dev org exists. |
 | Task 10 | Add a `catalog.sync` action (pull products from Zoho)? | Optional. If yes, he picks its color; yellow for the owner is the suggestion. |

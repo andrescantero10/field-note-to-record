@@ -3,7 +3,8 @@
 A voice-first deal-to-document prototype for a small robotics distributor.
 Built as the final project for CEN 4010 (Principles of Software Engineering, FAU).
 
-> **Status:** scaffold only. Sections marked _TBD_ are filled in as each part is built.
+> **Status:** in progress. The web API works; the phone page, the Zoho writer and
+> quotes are not built yet. Sections marked _TBD_ are filled in as each part is built.
 
 ## Purpose
 
@@ -31,7 +32,17 @@ cp .env.example .env   # defaults run fully offline: fake model, mock Zoho
 
 ## Run
 
-The web app is not built yet. To try one extraction from the command line:
+Start the web API (the phone page that will use it is not built yet):
+
+```bash
+.venv/bin/uvicorn --factory fieldnote.main:app
+```
+
+Then open <http://127.0.0.1:8000/docs> to see and try every route. Each request
+must say who is acting, in a header named `X-Acting-As`, with the value
+`sales_rep` or `owner`.
+
+To try one extraction from the command line:
 
 ```bash
 .venv/bin/python scripts/try_extraction.py
@@ -73,6 +84,16 @@ off after tax.
 
 ## Known limitations
 
+- No login. The app believes the `X-Acting-As` header, so anyone who can reach
+  the server can act as either user. The rules about who may do what (only a
+  note's author reviews it; a discounted quote needs the owner) are enforced
+  against that name, but the name itself is not proven. Run it on your own
+  machine only.
+- Requests are handled one at a time. While the model is reading one note,
+  every other request waits. That is fine for two users and not for more.
+- If the model fails, the note stays saved and the extraction can be tried
+  again. A note can never be deleted, so a note that keeps failing stays in
+  the database with no suggestions.
 - Audit log: the hash chain detects edited or deleted entries in the middle of
   the log, but not removal of the most recent entries (the shortened chain is
   still valid). Detecting that would need the latest hash stored outside the database.

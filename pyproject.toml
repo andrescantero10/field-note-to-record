@@ -13,12 +13,15 @@ license-files = ["LICENSE"]
 # Runtime dependencies are added in the task that first needs them.
 dependencies = [
     "anthropic>=2.9,<3",  # the real model provider (src/fieldnote/llm.py only)
+    "fastapi>=0.163,<1",  # the web API (src/fieldnote/api.py)
+    "uvicorn>=0.54,<1",   # the server that runs the web API
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
     "hypothesis>=6",
+    "httpx2>=2,<3",  # needed by FastAPI's test client
 ]
 
 [tool.setuptools.dynamic]

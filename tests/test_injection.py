@@ -7,8 +7,9 @@ Two attackers are tested together:
   write, as if the model obeyed the note completely or was compromised.
 
 Every note is run against every hostile answer through the real pipeline
-(save the note, extract, save the candidates). The checks are about what
-actually happened, not about what the model was told.
+(save the note, extract, save the candidates), once by calling the modules
+directly and once through the web API. The checks are about what actually
+happened, not about what the model was told.
 
 This file covers what exists today. When the CRM writer and the quote
 approval flow are built, add their outcomes to assert_nothing_bad_happened.
@@ -22,8 +23,10 @@ from pathlib import Path
 
 import pytest
 from hypothesis import given
+from fastapi.testclient import TestClient
 from hypothesis import strategies as st
 
+from fieldnote.api import create_app
 from fieldnote.audit import AuditLog
 from fieldnote.candidates import CandidateStore
 from fieldnote.catalog import Catalog, NoCurrentPrice
@@ -227,6 +230,18 @@ class Pipeline:
             self.store.save_extraction(self.note.id, self.extraction)
         return self.store.candidates(self.note.id)
 
+    def run_through_api(self, note_text, model_answer):
+        """The same, but through the web API, the way the phone page will do it."""
+        self.provider = FakeProvider(model_answer)
+        client = TestClient(create_app(db_path=self.db_path, provider=self.provider, catalog=CATALOG))
+        response = client.post("/notes", json={"text": note_text},
+                               headers={"X-Acting-As": "sales_rep"})
+        body = response.json()
+        failed = response.status_code == 502
+        self.note = self.store.get_note(body["note_id"] if failed else body["note"]["id"])
+        self.extraction = None if failed else "saved"
+        return response, self.store.candidates(self.note.id)
+
     def close(self):
         self.store.close()
         self.audit.close()
@@ -323,6 +338,41 @@ def test_every_note_against_every_hostile_answer(pipeline, note_file, hostile_an
     note_text = read_note(note_file)
     candidates = pipeline.run(note_text, hostile_answer(note_text))
     assert_nothing_bad_happened(pipeline, note_text, candidates)
+
+
+def keys_inside(value):
+    if isinstance(value, dict):
+        return set(value) | {k for v in value.values() for k in keys_inside(v)}
+    if isinstance(value, list):
+        return {k for v in value for k in keys_inside(v)}
+    return set()
+
+
+@pytest.mark.parametrize("note_file", NOTE_FILES, ids=lambda p: p.stem)
+@pytest.mark.parametrize("hostile_answer", HOSTILE_ANSWERS, ids=lambda f: f.__name__)
+def test_every_note_against_every_hostile_answer_through_the_web_api(
+    pipeline, note_file, hostile_answer
+):
+    note_text = read_note(note_file)
+    response, candidates = pipeline.run_through_api(note_text, hostile_answer(note_text))
+
+    # The same outcome as calling the modules directly.
+    assert_nothing_bad_happened(pipeline, note_text, candidates)
+
+    # And the answer sent to the phone says what the database says, no more.
+    body = response.json()
+    if response.status_code == 502:
+        assert set(body) == {"detail", "note_id"} and note_text not in response.text
+    else:
+        assert response.status_code == 201
+        assert body["note"] == {"id": pipeline.note.id, "author": "sales_rep", "text": note_text,
+                                "created_at": pipeline.note.created_at, "locked": False}
+        assert [(c["id"], c["state"], c["value"], c["product_id"], c["quantity"])
+                for c in body["candidates"]] == [
+            (c.id, c.state, c.value, c.product_id, c.quantity) for c in candidates
+        ]
+        for key in keys_inside(body):
+            assert not any(word in key.lower() for word in MONEY_WORDS), key
 
 
 def test_the_sample_notes_are_all_here():

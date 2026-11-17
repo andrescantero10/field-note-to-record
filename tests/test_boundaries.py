@@ -18,7 +18,7 @@ SRC = Path(__file__).resolve().parent.parent / "src" / "fieldnote"
 SOURCE_FILES = sorted(SRC.rglob("*.py"))
 
 MODEL_SDKS = {"anthropic", "openai", "google", "cohere", "mistralai", "boto3"}
-NETWORK = {"httpx", "requests", "aiohttp", "urllib", "urllib3", "http", "socket", "ssl"}
+NETWORK = {"httpx", "httpx2", "requests", "aiohttp", "urllib", "urllib3", "http", "socket", "ssl"}
 # importlib and __import__ load a module by name at run time, which this scan
 # cannot see through, so they are restricted too.
 DYNAMIC_IMPORT = {"importlib"}
@@ -55,19 +55,20 @@ from anthropic import Anthropic
 from urllib.request import urlopen
 from . import sibling
 from .audit import AuditLog
+import httpx2
 
 def late():
     import socket
     return __import__("requests")
 """
     assert imported_modules(source) == {
-        "os", "httpx", "anthropic", "urllib", "socket", "importlib",
+        "os", "httpx", "httpx2", "anthropic", "urllib", "socket", "importlib",
     }
 
 
 def test_scan_covers_the_real_source_files():
     names = {path.relative_to(SRC).as_posix() for path in SOURCE_FILES}
-    assert {"llm.py", "pricing.py", "policy.py", "audit.py", "catalog.py"} <= names
+    assert {"llm.py", "pricing.py", "policy.py", "audit.py", "catalog.py", "api.py", "main.py"} <= names
 
 
 @pytest.mark.parametrize(
@@ -78,3 +79,8 @@ def test_only_the_model_adapter_may_reach_a_model_or_the_network(path):
     restricted_imports = imported_modules(path.read_text(encoding="utf-8")) & RESTRICTED
     not_allowed = restricted_imports - ALLOWED.get(relative, set())
     assert not not_allowed, f"{relative} imports {sorted(not_allowed)}"
+
+
+def test_both_http_libraries_are_restricted():
+    # The model SDK is built on httpx2, so it must be on the list as well.
+    assert {"httpx", "httpx2"} <= RESTRICTED

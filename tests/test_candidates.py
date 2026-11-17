@@ -7,7 +7,13 @@ from datetime import datetime, timezone
 import pytest
 
 from fieldnote.audit import AuditLog
-from fieldnote.candidates import MAX_VALUE_CHARS, CandidateStore, NoteLocked
+from fieldnote.candidates import (
+    MAX_VALUE_CHARS,
+    CandidateStore,
+    NotAuthor,
+    NoteLocked,
+    NotFound,
+)
 from fieldnote.extraction import MAX_NOTE_CHARS, check_model_output
 from fieldnote.policy import ActionRefused, PolicyEngine, Rule, Tier
 from fieldnote.policy_table import POLICY_TABLE
@@ -472,3 +478,103 @@ def test_refused_note_is_not_saved(db_path, audit):
     conn = raw(db_path)
     assert conn.execute("SELECT COUNT(*) FROM notes").fetchone()[0] == 0
     conn.close()
+
+
+# --- Only the author reviews his own note ---------------------------------------------------
+
+
+REVIEW_ACTIONS = {
+    "confirm": lambda store, c: store.confirm(c["account"].id, "owner"),
+    "reject": lambda store, c: store.reject(c["account"].id, "owner"),
+    "edit_value": lambda store, c: store.edit_value(c["account"].id, "owner", "Changed Inc"),
+    "edit_item": lambda store, c: store.edit_item(c["arms"].id, "owner", quantity=9),
+    "confirm_all": lambda store, c: store.confirm_all(c["account"].note_id, "owner"),
+}
+ACTION_TYPES = {
+    "confirm": "candidate.confirm",
+    "reject": "candidate.reject",
+    "edit_value": "candidate.edit",
+    "edit_item": "candidate.edit",
+    "confirm_all": "candidate.confirm",
+}
+
+
+@pytest.mark.parametrize("action", sorted(REVIEW_ACTIONS))
+def test_someone_else_cannot_review_the_note(store, saved, audit, action):
+    note_id = saved["account"].note_id
+    before = store.candidates(note_id)
+
+    with pytest.raises(NotAuthor):
+        REVIEW_ACTIONS[action](store, saved)
+
+    assert store.candidates(note_id) == before  # nothing changed
+    last = audit.events()[-1]
+    assert (last.actor, last.action_type, last.outcome) == ("owner", ACTION_TYPES[action], "refused")
+    assert last.details == {
+        "check": "author",
+        "reason": "only the note's author may review it",
+        "note_id": note_id,
+        "author": "sales_rep",
+    }
+
+
+def test_author_check_comes_before_the_nothing_to_do_shortcuts(store, saved):
+    # Confirming twice normally just returns the candidate. For someone who is
+    # not the author it must still be refused.
+    store.confirm(saved["account"].id, "sales_rep")
+    with pytest.raises(NotAuthor):
+        store.confirm(saved["account"].id, "owner")
+    store.reject(saved["contact"].id, "sales_rep")
+    with pytest.raises(NotAuthor):
+        store.reject(saved["contact"].id, "owner")
+    with pytest.raises(NotAuthor):
+        store.edit_value(saved["account"].id, "owner", "Bayside Packaging")  # same value
+    with pytest.raises(NotAuthor):
+        store.edit_value(saved["email"].id, "owner", "")  # invalid value
+
+
+def test_the_author_is_matched_exactly(store, saved):
+    for almost in ("Sales_Rep", "sales_rep ", " sales_rep", "sales_rep\n"):
+        with pytest.raises(NotAuthor):
+            store.confirm(saved["account"].id, almost)
+    assert store.get(saved["account"].id).state == "pending"
+
+
+def test_not_found_is_a_lookup_error_of_its_own(store):
+    with pytest.raises(NotFound):
+        store.get_note(999)
+    with pytest.raises(NotFound):
+        store.get(999)
+    assert issubclass(NotFound, LookupError)
+
+
+def test_note_awaiting_extraction_allows_only_the_author_of_a_fresh_note(store, note, audit):
+    assert store.note_awaiting_extraction(note.id, "sales_rep") == note
+
+    with pytest.raises(NotAuthor):
+        store.note_awaiting_extraction(note.id, "owner")
+    last = audit.events()[-1]
+    assert (last.actor, last.action_type, last.outcome) == ("owner", "extraction.run", "refused")
+
+    with pytest.raises(NotFound):
+        store.note_awaiting_extraction(999, "sales_rep")
+
+    store.save_extraction(note.id, EXTRACTION)
+    with pytest.raises(ValueError, match="already saved"):
+        store.note_awaiting_extraction(note.id, "sales_rep")
+
+    store.lock_note(note.id, "sales_rep")
+    with pytest.raises(NoteLocked):
+        store.note_awaiting_extraction(note.id, "sales_rep")
+
+
+def test_confirm_all_by_someone_else_is_refused_even_with_nothing_left_to_confirm(store, saved, audit):
+    note_id = saved["account"].note_id
+    store.confirm_all(note_id, "sales_rep")  # only one-by-one candidates remain
+    before = len(audit.events())
+
+    with pytest.raises(NotAuthor):
+        store.confirm_all(note_id, "owner")
+
+    assert len(audit.events()) == before + 1
+    assert audit.events()[-1].outcome == "refused"
